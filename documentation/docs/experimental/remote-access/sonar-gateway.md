@@ -66,7 +66,7 @@ The bridge stores its Nostr secret, database key, encrypted MLS database, and co
 
 Back up the entire state directory while the gateway is stopped. Treat `config.json` as a secret. Relays alone may not be sufficient to recover the MLS session if the bridge identity or database key is lost.
 
-Commands are persisted before execution. A command interrupted by a restart is never replayed automatically, because its tool side effects may already have occurred. The bridge marks it complete and asks the controller to resubmit if needed. Existing group history is checkpointed at first discovery and is not executed as new input.
+Commands are persisted before execution. A command interrupted by a restart is never replayed automatically, because its tool side effects may already have occurred. The bridge marks it complete and asks the controller to verify its effects before deciding whether to resubmit. Existing group history is checkpointed at first discovery and is not executed as new input.
 
 ## Limitations
 
