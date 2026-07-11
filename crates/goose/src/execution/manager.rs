@@ -519,6 +519,24 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn remove_loaded_agent_preserves_busy_token() {
+        let temp_dir = TempDir::new().unwrap();
+        let manager = create_test_manager(&temp_dir).await;
+        let session = String::from("preserve-busy-token-test");
+        let token = tokio_util::sync::CancellationToken::new();
+
+        manager
+            .try_register_cancel_token(&session, token.clone())
+            .await
+            .unwrap();
+        manager.remove_loaded_agent(&session).await.unwrap();
+        manager.cancel_session(&session).await.unwrap();
+
+        assert!(token.is_cancelled());
+        manager.unregister_cancel_token(&session).await;
+    }
+
+    #[tokio::test]
     async fn test_concurrent_access() {
         let temp_dir = TempDir::new().unwrap();
         let manager = Arc::new(create_test_manager(&temp_dir).await);

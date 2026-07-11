@@ -147,7 +147,7 @@ printf '%s\n' \
     "2. Send: Reply with exactly SONAR_SMOKE_OK" \
     "3. Verify the group receives SONAR_SMOKE_OK once." \
     "4. Send two numbered prompts quickly and verify replies stay in order." \
-    "5. Send a prompt from a non-controller member and verify it is rejected." \
+    "5. Send a prompt from a non-controller member and verify goose ignores it." \
     "" \
     "Press Ctrl+C to stop. Gateway log: ${log_file}"
 
