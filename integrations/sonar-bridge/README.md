@@ -36,3 +36,15 @@ The durable ledger checkpoints existing history when a group first appears. It r
 Sonar Core authenticates MLS senders. The bridge accepts group invitations only when the welcome was sent by a configured controller, and the Goose gateway requires the same explicit controller npub allowlist for commands. Group membership grants access to the conversation, not permission to run local tools. All group members can currently administer MLS membership, so only share a group with people who may read its future traffic.
 
 Sonar Core is pinned by commit in `Cargo.toml` and `Cargo.lock`. Review upstream protocol and storage changes before updating that revision.
+
+## End-to-end smoke test
+
+Configure a goose provider first, then run the interactive smoke harness with the controller identity from your Sonar app:
+
+```bash
+./integrations/sonar-bridge/smoke-test.sh \
+  --controller npub1yourcontroller \
+  --relay wss://relay.example.com
+```
+
+Add `--session-id SESSION_ID` to exercise attachment to an existing session. The script builds release binaries, prints the bridge npub, waits for you to invite it, starts an ephemeral gateway, generates the pairing code, and prints the ordered-command and unauthorized-member checks. Bridge MLS state remains in `~/.local/share/goose/sonar-smoke` unless `--state-dir` is supplied.

@@ -701,6 +701,9 @@ enum GatewayCommand {
 
         #[arg(long, action = clap::ArgAction::Append, help = "Sonar controller npub (repeatable)")]
         controller: Vec<String>,
+
+        #[arg(long, help = "Run without saving the gateway for automatic restart")]
+        no_persist: bool,
     },
 
     #[command(about = "Stop a running gateway")]
@@ -1963,6 +1966,7 @@ async fn handle_gateway_command(command: GatewayCommand) -> Result<()> {
             sonar_home,
             relay,
             controller,
+            no_persist,
         } => {
             let platform_config = match gateway_type.as_str() {
                 "telegram" => serde_json::json!({
@@ -1990,7 +1994,7 @@ async fn handle_gateway_command(command: GatewayCommand) -> Result<()> {
                 }
                 other => return Err(anyhow::anyhow!("Unknown gateway type: {other}")),
             };
-            gateway::handle_gateway_start(gateway_type, platform_config).await
+            gateway::handle_gateway_start(gateway_type, platform_config, !no_persist).await
         }
         GatewayCommand::Stop { gateway_type } => gateway::handle_gateway_stop(gateway_type).await,
         GatewayCommand::Pair {

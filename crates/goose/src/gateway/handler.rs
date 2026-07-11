@@ -44,6 +44,47 @@ pub struct GatewayHandler {
     config: GatewayConfig,
 }
 
+struct SessionBusyGuard {
+    agent_manager: Arc<AgentManager>,
+    session_id: String,
+    cancel: CancellationToken,
+    armed: bool,
+}
+
+impl SessionBusyGuard {
+    fn new(agent_manager: Arc<AgentManager>, session_id: &str, cancel: CancellationToken) -> Self {
+        Self {
+            agent_manager,
+            session_id: session_id.to_string(),
+            cancel,
+            armed: true,
+        }
+    }
+
+    async fn release(mut self) {
+        self.agent_manager
+            .unregister_cancel_token(&self.session_id)
+            .await;
+        self.armed = false;
+    }
+}
+
+impl Drop for SessionBusyGuard {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        self.cancel.cancel();
+        let agent_manager = self.agent_manager.clone();
+        let session_id = self.session_id.clone();
+        if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+            runtime.spawn(async move {
+                agent_manager.unregister_cancel_token(&session_id).await;
+            });
+        }
+    }
+}
+
 impl GatewayHandler {
     pub fn new(
         agent_manager: Arc<AgentManager>,
@@ -318,6 +359,36 @@ impl GatewayHandler {
         message: &IncomingMessage,
         session_id: &str,
     ) -> anyhow::Result<()> {
+        let cancel = CancellationToken::new();
+        if let Err(error) = self
+            .agent_manager
+            .try_register_cancel_token(session_id, cancel.clone())
+            .await
+        {
+            self.gateway
+                .send_message(
+                    &message.user,
+                    OutgoingMessage::Text {
+                        body: format!("Session is busy: {error}"),
+                    },
+                )
+                .await?;
+            return Ok(());
+        }
+
+        let busy_guard =
+            SessionBusyGuard::new(self.agent_manager.clone(), session_id, cancel.clone());
+        let result = self.run_session(message, session_id, cancel).await;
+        busy_guard.release().await;
+        result
+    }
+
+    async fn run_session(
+        &self,
+        message: &IncomingMessage,
+        session_id: &str,
+        cancel: CancellationToken,
+    ) -> anyhow::Result<()> {
         self.gateway
             .send_message(&message.user, OutgoingMessage::Typing)
             .await?;
@@ -334,9 +405,7 @@ impl GatewayHandler {
             false
         };
         if extensions_changed {
-            self.agent_manager
-                .remove_session_if_loaded(session_id)
-                .await?;
+            self.agent_manager.remove_loaded_agent(session_id).await?;
         }
 
         let agent = self
@@ -367,22 +436,6 @@ impl GatewayHandler {
         // Load extensions (skips any already loaded on the agent).
         agent.load_extensions_from_session(&session).await;
 
-        let cancel = CancellationToken::new();
-        if let Err(error) = self
-            .agent_manager
-            .try_register_cancel_token(session_id, cancel.clone())
-            .await
-        {
-            self.gateway
-                .send_message(
-                    &message.user,
-                    OutgoingMessage::Text {
-                        body: format!("Session is busy: {error}"),
-                    },
-                )
-                .await?;
-            return Ok(());
-        }
         let prompt = message
             .sender_label
             .as_deref()
@@ -417,7 +470,6 @@ impl GatewayHandler {
         {
             Ok(s) => s,
             Err(e) => {
-                self.agent_manager.unregister_cancel_token(session_id).await;
                 self.gateway
                     .send_message(
                         &message.user,
@@ -545,7 +597,6 @@ impl GatewayHandler {
                     // Stop typing indicator before sending error.
                     typing_cancel.cancel();
                     let _ = typing_handle.await;
-                    self.agent_manager.unregister_cancel_token(session_id).await;
                     self.gateway
                         .send_message(
                             &message.user,
@@ -562,7 +613,6 @@ impl GatewayHandler {
         // Stream finished — stop the typing indicator.
         typing_cancel.cancel();
         let _ = typing_handle.await;
-        self.agent_manager.unregister_cancel_token(session_id).await;
 
         tracing::debug!(
             session_id,

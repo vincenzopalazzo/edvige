@@ -37,6 +37,7 @@ pub async fn handle_gateway_status() -> Result<()> {
 pub async fn handle_gateway_start(
     gateway_type: String,
     platform_config: serde_json::Value,
+    persist: bool,
 ) -> Result<()> {
     let agent_manager = AgentManager::instance().await?;
     let gateway_manager = Arc::new(GatewayManager::new(agent_manager)?);
@@ -48,7 +49,11 @@ pub async fn handle_gateway_start(
     };
 
     let gw = goose::gateway::create_gateway(&mut config)?;
-    gateway_manager.start_gateway(config, gw).await?;
+    if persist {
+        gateway_manager.start_gateway(config, gw).await?;
+    } else {
+        gateway_manager.start_gateway_ephemeral(config, gw).await?;
+    }
 
     println!("Gateway started. Press Ctrl+C to stop.");
 

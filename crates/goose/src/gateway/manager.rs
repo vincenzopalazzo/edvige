@@ -121,6 +121,15 @@ impl GatewayManager {
         Ok(())
     }
 
+    /// Start a gateway for the current process without saving auto-start configuration.
+    pub async fn start_gateway_ephemeral(
+        &self,
+        config: GatewayConfig,
+        gateway: Arc<dyn Gateway>,
+    ) -> anyhow::Result<()> {
+        self.start_gateway_internal(config, gateway).await
+    }
+
     /// Stop a gateway while preserving pairings so it can be restarted.
     pub async fn stop_gateway(&self, gateway_type: &str) -> anyhow::Result<()> {
         let instance = self

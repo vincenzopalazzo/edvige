@@ -25,6 +25,7 @@ use protocol::{BridgeCommand, BridgeEvent, MAX_PROTOCOL_LINE_BYTES, PROTOCOL_VER
 
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(30);
 const START_TIMEOUT: Duration = Duration::from_secs(45);
+const GROUP_QUEUE_CAPACITY: usize = 64;
 
 type PendingResponses = Arc<Mutex<HashMap<String, oneshot::Sender<anyhow::Result<()>>>>>;
 
@@ -39,6 +40,19 @@ struct SonarPlatformConfig {
     controllers: Vec<String>,
 }
 
+struct GroupMessage {
+    message_id: String,
+    group_id: String,
+    group_name: String,
+    sender: String,
+    content: String,
+}
+
+struct GroupWorker {
+    sender: mpsc::Sender<GroupMessage>,
+    handle: tokio::task::JoinHandle<()>,
+}
+
 fn default_bridge_path() -> String {
     "goose-sonar-bridge".to_string()
 }
@@ -49,7 +63,7 @@ pub struct SonarGateway {
     controllers: Arc<HashSet<String>>,
     command_tx: Arc<RwLock<Option<mpsc::Sender<BridgeCommand>>>>,
     pending: PendingResponses,
-    group_locks: Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>,
+    group_workers: Arc<Mutex<HashMap<String, GroupWorker>>>,
     info: Arc<StdRwLock<HashMap<String, String>>>,
 }
 
@@ -75,7 +89,7 @@ impl SonarGateway {
             controllers,
             command_tx: Arc::new(RwLock::new(None)),
             pending: Arc::new(Mutex::new(HashMap::new())),
-            group_locks: Arc::new(Mutex::new(HashMap::new())),
+            group_workers: Arc::new(Mutex::new(HashMap::new())),
             info: Arc::new(StdRwLock::new(HashMap::new())),
         })
     }
@@ -137,12 +151,124 @@ impl SonarGateway {
         .await
     }
 
-    async fn group_lock(&self, group_id: &str) -> Arc<Mutex<()>> {
-        let mut locks = self.group_locks.lock().await;
-        locks
-            .entry(group_id.to_string())
-            .or_insert_with(|| Arc::new(Mutex::new(())))
-            .clone()
+    async fn enqueue_group_message(&self, handler: &GatewayHandler, message: GroupMessage) {
+        let group_id = message.group_id.clone();
+        let sender = {
+            let mut workers = self.group_workers.lock().await;
+            if let Some(worker) = workers.get(&group_id) {
+                worker.sender.clone()
+            } else {
+                let (sender, receiver) = mpsc::channel(GROUP_QUEUE_CAPACITY);
+                let gateway = self.clone();
+                let handler = handler.clone();
+                let handle = tokio::spawn(async move {
+                    gateway.run_group_worker(handler, receiver).await;
+                });
+                workers.insert(
+                    group_id.clone(),
+                    GroupWorker {
+                        sender: sender.clone(),
+                        handle,
+                    },
+                );
+                sender
+            }
+        };
+
+        match sender.try_send(message) {
+            Ok(()) => {}
+            Err(mpsc::error::TrySendError::Full(message)) => {
+                let gateway = self.clone();
+                tokio::spawn(async move {
+                    gateway.reject_queued_message(message).await;
+                });
+            }
+            Err(mpsc::error::TrySendError::Closed(message)) => {
+                self.group_workers.lock().await.remove(&group_id);
+                let gateway = self.clone();
+                tokio::spawn(async move {
+                    gateway.reject_queued_message(message).await;
+                });
+            }
+        }
+    }
+
+    async fn run_group_worker(
+        &self,
+        handler: GatewayHandler,
+        mut receiver: mpsc::Receiver<GroupMessage>,
+    ) {
+        while let Some(message) = receiver.recv().await {
+            self.process_group_message(&handler, message).await;
+        }
+    }
+
+    async fn process_group_message(&self, handler: &GatewayHandler, message: GroupMessage) {
+        let user = PlatformUser {
+            platform: "sonar".into(),
+            user_id: message.group_id,
+            display_name: Some(message.group_name),
+        };
+
+        if !self.controllers.contains(&message.sender) {
+            let _ = self
+                .send_message(
+                    &user,
+                    OutgoingMessage::Text {
+                        body: format!(
+                            "{} is not authorized to control goose in this group.",
+                            message.sender
+                        ),
+                    },
+                )
+                .await;
+            let _ = self.complete_message(message.message_id).await;
+            return;
+        }
+
+        let message_id = message.message_id;
+        let incoming = IncomingMessage {
+            user: user.clone(),
+            sender_label: Some(message.sender),
+            text: message.content,
+            platform_message_id: Some(message_id.clone()),
+            attachments: Vec::new(),
+        };
+        if let Err(error) = handler.handle_message(incoming).await {
+            let _ = self
+                .send_message(
+                    &user,
+                    OutgoingMessage::Text {
+                        body: format!("goose failed to handle the command: {error}"),
+                    },
+                )
+                .await;
+        }
+        let _ = self.complete_message(message_id).await;
+    }
+
+    async fn reject_queued_message(&self, message: GroupMessage) {
+        let user = PlatformUser {
+            platform: "sonar".into(),
+            user_id: message.group_id,
+            display_name: Some(message.group_name),
+        };
+        let _ = self
+            .send_message(
+                &user,
+                OutgoingMessage::Text {
+                    body: "goose command queue is full. Resend this command later.".into(),
+                },
+            )
+            .await;
+        let _ = self.complete_message(message.message_id).await;
+    }
+
+    async fn stop_group_workers(&self) {
+        let workers = std::mem::take(&mut *self.group_workers.lock().await);
+        for (_, worker) in workers {
+            worker.handle.abort();
+        }
     }
 
     async fn handle_bridge_event(
@@ -195,7 +321,7 @@ impl SonarGateway {
                         .send_message(
                             &user,
                             OutgoingMessage::Text {
-                                body: "Goose joined this group. An allowed controller can now send a Goose pairing code.".into(),
+                                body: "goose joined this group. An allowed controller can now send a goose pairing code.".into(),
                             },
                         )
                         .await;
@@ -209,52 +335,17 @@ impl SonarGateway {
                 content,
                 ..
             } => {
-                let gateway = self.clone();
-                let handler = handler.clone();
-                tokio::spawn(async move {
-                    let group_lock = gateway.group_lock(&group_id).await;
-                    let _guard = group_lock.lock().await;
-                    let user = PlatformUser {
-                        platform: "sonar".into(),
-                        user_id: group_id,
-                        display_name: Some(group_name),
-                    };
-
-                    if !gateway.controllers.contains(&sender) {
-                        let _ = gateway
-                            .send_message(
-                                &user,
-                                OutgoingMessage::Text {
-                                    body: format!(
-                                        "{} is not authorized to control Goose in this group.",
-                                        sender
-                                    ),
-                                },
-                            )
-                            .await;
-                        let _ = gateway.complete_message(message_id).await;
-                        return;
-                    }
-
-                    let incoming = IncomingMessage {
-                        user: user.clone(),
-                        sender_label: Some(sender),
-                        text: content,
-                        platform_message_id: Some(message_id.clone()),
-                        attachments: Vec::new(),
-                    };
-                    if let Err(error) = handler.handle_message(incoming).await {
-                        let _ = gateway
-                            .send_message(
-                                &user,
-                                OutgoingMessage::Text {
-                                    body: format!("Goose failed to handle the command: {error}"),
-                                },
-                            )
-                            .await;
-                    }
-                    let _ = gateway.complete_message(message_id).await;
-                });
+                self.enqueue_group_message(
+                    handler,
+                    GroupMessage {
+                        message_id,
+                        group_id,
+                        group_name,
+                        sender,
+                        content,
+                    },
+                )
+                .await;
             }
         }
         Ok(())
@@ -365,6 +456,7 @@ impl Gateway for SonarGateway {
         };
 
         *self.command_tx.write().await = None;
+        self.stop_group_workers().await;
         self.fail_pending("Sonar bridge stopped").await;
         writer.abort();
         stderr_task.abort();
