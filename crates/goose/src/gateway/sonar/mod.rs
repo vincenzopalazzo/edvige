@@ -26,6 +26,7 @@ use protocol::{BridgeCommand, BridgeEvent, MAX_PROTOCOL_LINE_BYTES, PROTOCOL_VER
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(30);
 const START_TIMEOUT: Duration = Duration::from_secs(45);
 const GROUP_QUEUE_CAPACITY: usize = 64;
+const COMPLETE_ATTEMPTS: usize = 3;
 
 type PendingResponses = Arc<Mutex<HashMap<String, oneshot::Sender<anyhow::Result<()>>>>>;
 
@@ -64,6 +65,7 @@ pub struct SonarGateway {
     command_tx: Arc<RwLock<Option<mpsc::Sender<BridgeCommand>>>>,
     pending: PendingResponses,
     group_workers: Arc<Mutex<HashMap<String, GroupWorker>>>,
+    fatal: CancellationToken,
     info: Arc<StdRwLock<HashMap<String, String>>>,
 }
 
@@ -90,6 +92,7 @@ impl SonarGateway {
             command_tx: Arc::new(RwLock::new(None)),
             pending: Arc::new(Mutex::new(HashMap::new())),
             group_workers: Arc::new(Mutex::new(HashMap::new())),
+            fatal: CancellationToken::new(),
             info: Arc::new(StdRwLock::new(HashMap::new())),
         })
     }
@@ -144,11 +147,30 @@ impl SonarGateway {
     }
 
     async fn complete_message(&self, message_id: String) -> anyhow::Result<()> {
-        self.send_command(BridgeCommand::complete(
-            Uuid::new_v4().to_string(),
-            message_id,
-        ))
-        .await
+        let mut last_error = None;
+        for attempt in 0..COMPLETE_ATTEMPTS {
+            match self
+                .send_command(BridgeCommand::complete(
+                    Uuid::new_v4().to_string(),
+                    message_id.clone(),
+                ))
+                .await
+            {
+                Ok(()) => return Ok(()),
+                Err(error) => last_error = Some(error),
+            }
+            if attempt + 1 < COMPLETE_ATTEMPTS {
+                tokio::time::sleep(Duration::from_millis(250 * (attempt as u64 + 1))).await;
+            }
+        }
+        Err(last_error.unwrap())
+    }
+
+    async fn finish_message(&self, message_id: String) {
+        if let Err(error) = self.complete_message(message_id).await {
+            tracing::error!(%error, "Sonar bridge failed to persist command completion");
+            self.fatal.cancel();
+        }
     }
 
     async fn enqueue_group_message(&self, handler: &GatewayHandler, message: GroupMessage) {
@@ -222,7 +244,7 @@ impl SonarGateway {
                     },
                 )
                 .await;
-            let _ = self.complete_message(message.message_id).await;
+            self.finish_message(message.message_id).await;
             return;
         }
 
@@ -244,7 +266,7 @@ impl SonarGateway {
                 )
                 .await;
         }
-        let _ = self.complete_message(message_id).await;
+        self.finish_message(message_id).await;
     }
 
     async fn reject_queued_message(&self, message: GroupMessage) {
@@ -261,7 +283,7 @@ impl SonarGateway {
                 },
             )
             .await;
-        let _ = self.complete_message(message.message_id).await;
+        self.finish_message(message.message_id).await;
     }
 
     async fn stop_group_workers(&self) {
@@ -335,6 +357,9 @@ impl SonarGateway {
                 content,
                 ..
             } => {
+                if !self.controllers.contains(&sender) {
+                    anyhow::bail!("Sonar bridge emitted a message from an unauthorized sender");
+                }
                 self.enqueue_group_message(
                     handler,
                     GroupMessage {
@@ -430,6 +455,9 @@ impl Gateway for SonarGateway {
             tokio::select! {
                 _ = cancel.cancelled() => {
                     break Ok(());
+                }
+                _ = self.fatal.cancelled() => {
+                    break Err(anyhow::anyhow!("Sonar bridge completion acknowledgement failed"));
                 }
                 line = output.next() => {
                     match line {

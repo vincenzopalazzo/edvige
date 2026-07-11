@@ -19,7 +19,7 @@ Sonar provides authenticated, end-to-end encrypted group transport over Nostr re
 - The message sender's authenticated npub must be in the gateway's controller allowlist.
 - The bridge accepts new group invitations only when an allowed controller sent the welcome.
 
-Joining the group does not grant permission to run goose. Observers can read group traffic but their commands are rejected. Sonar currently allows every MLS group member to administer membership, so share a control group only with people who may read its future messages.
+Joining the group does not grant permission to run goose. Observers can read group traffic but the bridge checkpoints and ignores their commands before they reach the execution queue. Sonar currently allows every MLS group member to administer membership, so share a control group only with people who may read its future messages.
 
 The controller allowlist is local configuration. Group messages cannot add controllers or change goose's permission policy.
 

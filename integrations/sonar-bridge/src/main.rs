@@ -242,7 +242,7 @@ async fn reconcile(
     accept_pending_invites(client, controllers).await?;
     let joined = checkpoint_new_groups(client, ledger_path, ledger)?;
     emit_joined_groups(&joined)?;
-    emit_new_messages(client, ledger_path, ledger)
+    emit_new_messages(client, controllers, ledger_path, ledger)
 }
 
 async fn accept_pending_invites(
@@ -250,11 +250,15 @@ async fn accept_pending_invites(
     controllers: &HashSet<PublicKey>,
 ) -> Result<()> {
     for invite in client.pending_group_invites()? {
-        if controllers.contains(&invite.welcomer) {
+        if is_controller(controllers, &invite.welcomer) {
             client.accept_group_invite(&invite.id).await?;
         }
     }
     Ok(())
+}
+
+fn is_controller(controllers: &HashSet<PublicKey>, sender: &PublicKey) -> bool {
+    controllers.contains(sender)
 }
 
 fn checkpoint_new_groups(
@@ -291,6 +295,7 @@ fn emit_joined_groups(groups: &[(String, String)]) -> Result<()> {
 
 fn emit_new_messages(
     client: &SonarClient,
+    controllers: &HashSet<PublicKey>,
     ledger_path: &Path,
     ledger: &mut CommandLedger,
 ) -> Result<()> {
@@ -310,6 +315,11 @@ fn emit_new_messages(
                 continue;
             }
             if message.content.is_empty() || message.content.len() > MAX_MESSAGE_BYTES {
+                ledger.completed.insert(message_id);
+                write_private_json(ledger_path, ledger)?;
+                continue;
+            }
+            if !is_controller(controllers, &message.sender) {
                 ledger.completed.insert(message_id);
                 write_private_json(ledger_path, ledger)?;
                 continue;
@@ -345,7 +355,7 @@ async fn recover_interrupted_commands(
                 let _ = client
                     .send_text(
                         &group_id,
-                        "A Goose command was interrupted by a gateway restart. It was not replayed; resend it if it is still needed.",
+                        "A goose command may have completed before the gateway restarted. It was not replayed; verify its effects before resubmitting.",
                     )
                     .await;
             }
@@ -696,5 +706,15 @@ mod tests {
         let loaded = load_ledger(&path).unwrap();
         assert_eq!(loaded.executing.get("message"), Some(&"group".into()));
         fs::remove_dir_all(temp).unwrap();
+    }
+
+    #[test]
+    fn only_configured_controllers_are_forwarded() {
+        let controller = PublicKey::from_byte_array([1; 32]);
+        let observer = PublicKey::from_byte_array([2; 32]);
+        let controllers = HashSet::from([controller]);
+
+        assert!(is_controller(&controllers, &controller));
+        assert!(!is_controller(&controllers, &observer));
     }
 }
