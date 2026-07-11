@@ -333,6 +333,11 @@ impl AgentManager {
         if let Some(token) = self.cancel_tokens.write().await.remove(session_id) {
             token.cancel();
         }
+        self.remove_loaded_agent(session_id).await
+    }
+
+    /// Drops only the in-memory agent while preserving an operation's busy token.
+    pub async fn remove_loaded_agent(&self, session_id: &str) -> Result<()> {
         let mut sessions = self.sessions.write().await;
         if sessions.pop(session_id).is_none() {
             return Ok(());
