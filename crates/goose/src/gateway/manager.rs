@@ -13,6 +13,7 @@ use super::pairing::PairingStore;
 use super::{Gateway, GatewayConfig, PairingState, PlatformUser};
 
 const GATEWAY_CONFIGS_KEY: &str = "gateway_configs";
+const GATEWAY_STOP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
 fn secret_key_for(gateway_type: &str) -> String {
     format!("gateway_platform_config_{}", gateway_type)
@@ -56,6 +57,15 @@ pub struct GatewayManager {
     gateways: RwLock<HashMap<String, GatewayInstance>>,
     pairing_store: Arc<PairingStore>,
     agent_manager: Arc<AgentManager>,
+}
+
+impl Drop for GatewayManager {
+    fn drop(&mut self) {
+        for (_, instance) in self.gateways.get_mut().drain() {
+            instance.cancel.cancel();
+            instance.handle.abort();
+        }
+    }
 }
 
 impl GatewayManager {
@@ -129,6 +139,10 @@ impl GatewayManager {
         self.start_gateway_internal(config, gateway).await
     }
 
+    pub fn persist_gateway_config(config: &GatewayConfig) -> anyhow::Result<()> {
+        Self::save_config(config)
+    }
+
     /// Stop a gateway while preserving pairings so it can be restarted.
     pub async fn stop_gateway(&self, gateway_type: &str) -> anyhow::Result<()> {
         let instance = self
@@ -138,8 +152,7 @@ impl GatewayManager {
             .remove(gateway_type)
             .ok_or_else(|| anyhow::anyhow!("Gateway '{}' is not running", gateway_type))?;
 
-        instance.cancel.cancel();
-        let _ = instance.handle.await;
+        Self::stop_instance(instance).await;
 
         tracing::info!(gateway = %gateway_type, "gateway stopped");
         Ok(())
@@ -149,8 +162,7 @@ impl GatewayManager {
     pub async fn remove_gateway(&self, gateway_type: &str) -> anyhow::Result<()> {
         // Stop if running (ignore error if not running).
         if let Some(instance) = self.gateways.write().await.remove(gateway_type) {
-            instance.cancel.cancel();
-            let _ = instance.handle.await;
+            Self::stop_instance(instance).await;
         }
 
         if let Err(e) = self
@@ -166,8 +178,21 @@ impl GatewayManager {
         Ok(())
     }
 
+    async fn stop_instance(instance: GatewayInstance) {
+        instance.cancel.cancel();
+        let mut handle = instance.handle;
+        if tokio::time::timeout(GATEWAY_STOP_TIMEOUT, &mut handle)
+            .await
+            .is_err()
+        {
+            handle.abort();
+            let _ = handle.await;
+        }
+    }
+
     /// Restart a stopped gateway using its saved config.
     pub async fn restart_gateway(&self, gateway_type: &str) -> anyhow::Result<()> {
+        self.reap_finished_gateway(gateway_type).await;
         if self.gateways.read().await.contains_key(gateway_type) {
             anyhow::bail!("Gateway '{}' is already running", gateway_type);
         }
@@ -190,10 +215,7 @@ impl GatewayManager {
         gateway: Arc<dyn Gateway>,
     ) -> anyhow::Result<()> {
         let gw_type = config.gateway_type.clone();
-
-        if self.gateways.read().await.contains_key(&gw_type) {
-            anyhow::bail!("Gateway '{}' is already running", gw_type);
-        }
+        self.reap_finished_gateway(&gw_type).await;
 
         gateway.validate_config().await?;
 
@@ -209,6 +231,11 @@ impl GatewayManager {
         let cancel_clone = cancel.clone();
         let gateway_type_for_task = gw_type.clone();
 
+        let mut gateways = self.gateways.write().await;
+        if gateways.contains_key(&gw_type) {
+            anyhow::bail!("Gateway '{}' is already running", gw_type);
+        }
+
         let handle = tokio::spawn(async move {
             if let Err(e) = gateway_clone.start(handler, cancel_clone).await {
                 tracing::error!(gateway = %gateway_type_for_task, error = %e, "gateway stopped with error");
@@ -222,8 +249,39 @@ impl GatewayManager {
             handle,
         };
 
-        self.gateways.write().await.insert(gw_type, instance);
+        gateways.insert(gw_type, instance);
         Ok(())
+    }
+
+    async fn reap_finished_gateway(&self, gateway_type: &str) {
+        let instance = {
+            let mut gateways = self.gateways.write().await;
+            let finished = gateways
+                .get(gateway_type)
+                .is_some_and(|instance| instance.handle.is_finished());
+            finished.then(|| gateways.remove(gateway_type)).flatten()
+        };
+        if let Some(instance) = instance {
+            Self::stop_instance(instance).await;
+        }
+    }
+
+    async fn reap_finished_gateways(&self) {
+        let instances = {
+            let mut gateways = self.gateways.write().await;
+            let finished: Vec<String> = gateways
+                .iter()
+                .filter(|(_, instance)| instance.handle.is_finished())
+                .map(|(gateway_type, _)| gateway_type.clone())
+                .collect();
+            finished
+                .into_iter()
+                .filter_map(|gateway_type| gateways.remove(&gateway_type))
+                .collect::<Vec<_>>()
+        };
+        for instance in instances {
+            Self::stop_instance(instance).await;
+        }
     }
 
     #[allow(dead_code)]
@@ -231,23 +289,33 @@ impl GatewayManager {
         let instances: Vec<(String, GatewayInstance)> =
             self.gateways.write().await.drain().collect();
         for (gateway_type, instance) in instances {
-            instance.cancel.cancel();
-            let _ = instance.handle.await;
+            Self::stop_instance(instance).await;
             tracing::info!(gateway = %gateway_type, "gateway stopped");
         }
     }
 
     #[allow(dead_code)]
     pub async fn is_running(&self, gateway_type: &str) -> bool {
-        self.gateways.read().await.contains_key(gateway_type)
+        self.gateways
+            .read()
+            .await
+            .get(gateway_type)
+            .is_some_and(|instance| !instance.handle.is_finished())
     }
 
     #[allow(dead_code)]
     pub async fn list_running(&self) -> Vec<String> {
-        self.gateways.read().await.keys().cloned().collect()
+        self.gateways
+            .read()
+            .await
+            .iter()
+            .filter(|(_, instance)| !instance.handle.is_finished())
+            .map(|(gateway_type, _)| gateway_type.clone())
+            .collect()
     }
 
     pub async fn status(&self) -> Vec<GatewayStatus> {
+        self.reap_finished_gateways().await;
         let running = self.gateways.read().await;
         let mut statuses = Vec::new();
         let mut seen = std::collections::HashSet::new();
@@ -271,7 +339,7 @@ impl GatewayManager {
 
             statuses.push(GatewayStatus {
                 gateway_type: gw_type.clone(),
-                running: true,
+                running: !instance.handle.is_finished(),
                 configured: true,
                 paired_users,
                 info: instance.gateway.info(),
@@ -284,11 +352,26 @@ impl GatewayManager {
                 if seen.contains(&config.gateway_type) {
                     continue;
                 }
+                let gateway_type = config.gateway_type;
+                let paired_users = self
+                    .pairing_store
+                    .list_paired_users(&gateway_type)
+                    .await
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|(user, session_id, paired_at)| PairedUserInfo {
+                        platform: user.platform,
+                        user_id: user.user_id,
+                        display_name: user.display_name,
+                        session_id,
+                        paired_at,
+                    })
+                    .collect();
                 statuses.push(GatewayStatus {
-                    gateway_type: config.gateway_type,
+                    gateway_type,
                     running: false,
                     configured: true,
-                    paired_users: Vec::new(),
+                    paired_users,
                     info: HashMap::new(),
                 });
             }

@@ -141,6 +141,45 @@ impl GooseAcpAgent {
         self.on_get_diagnostics(req).await
     }
 
+    #[custom_method(GatewayStatusRequest)]
+    async fn dispatch_gateway_status(
+        &self,
+    ) -> Result<GatewayStatusResponse, agent_client_protocol::Error> {
+        self.on_gateway_status().await
+    }
+
+    #[custom_method(StartSonarGatewayRequest)]
+    async fn dispatch_start_sonar_gateway(
+        &self,
+        req: StartSonarGatewayRequest,
+    ) -> Result<StartSonarGatewayResponse, agent_client_protocol::Error> {
+        self.on_start_sonar_gateway(req).await
+    }
+
+    #[custom_method(PairSonarGatewayRequest)]
+    async fn dispatch_pair_sonar_gateway(
+        &self,
+        req: PairSonarGatewayRequest,
+    ) -> Result<PairSonarGatewayResponse, agent_client_protocol::Error> {
+        self.on_pair_sonar_gateway(req).await
+    }
+
+    #[custom_method(StopSonarGatewayRequest)]
+    async fn dispatch_stop_sonar_gateway(
+        &self,
+        req: StopSonarGatewayRequest,
+    ) -> Result<EmptyResponse, agent_client_protocol::Error> {
+        self.on_stop_sonar_gateway(req).await
+    }
+
+    #[custom_method(UnpairSonarGatewayRequest)]
+    async fn dispatch_unpair_sonar_gateway(
+        &self,
+        req: UnpairSonarGatewayRequest,
+    ) -> Result<EmptyResponse, agent_client_protocol::Error> {
+        self.on_unpair_sonar_gateway(req).await
+    }
+
     #[custom_method(ListPromptsRequest)]
     async fn dispatch_list_prompts(
         &self,

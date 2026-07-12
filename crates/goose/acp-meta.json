@@ -71,6 +71,31 @@
       "responseType": "DiagnosticsGetResponse_unstable"
     },
     {
+      "method": "_goose/unstable/gateways/status",
+      "requestType": "GatewayStatusRequest_unstable",
+      "responseType": "GatewayStatusResponse_unstable"
+    },
+    {
+      "method": "_goose/unstable/gateways/sonar/start",
+      "requestType": "StartSonarGatewayRequest_unstable",
+      "responseType": "StartSonarGatewayResponse_unstable"
+    },
+    {
+      "method": "_goose/unstable/gateways/sonar/pair",
+      "requestType": "PairSonarGatewayRequest_unstable",
+      "responseType": "PairSonarGatewayResponse_unstable"
+    },
+    {
+      "method": "_goose/unstable/gateways/sonar/stop",
+      "requestType": "StopSonarGatewayRequest_unstable",
+      "responseType": "EmptyResponse"
+    },
+    {
+      "method": "_goose/unstable/gateways/sonar/unpair",
+      "requestType": "UnpairSonarGatewayRequest_unstable",
+      "responseType": "EmptyResponse"
+    },
+    {
       "method": "_goose/unstable/config/prompts/list",
       "requestType": "ListPromptsRequest_unstable",
       "responseType": "ListPromptsResponse_unstable"

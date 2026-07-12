@@ -4606,5 +4606,119 @@
   },
   "userMessage.forkSessionTitle": {
     "defaultMessage": "Crea una nuova sessione con il messaggio modificato"
+  },
+  "sonarRemote.bridgeHelp": {
+    "defaultMessage": "Invite this npub to a Sonar group from an allowlisted controller identity."
+  },
+  "sonarRemote.bridgeIdentity": {
+    "defaultMessage": "Goose bridge identity"
+  },
+  "sonarRemote.controllers": {
+    "defaultMessage": "Controller npubs"
+  },
+  "sonarRemote.controllersHelp": {
+    "defaultMessage": "Enter one or more Sonar identity npubs, separated by commas."
+  },
+  "sonarRemote.controllersPlaceholder": {
+    "defaultMessage": "npub1…"
+  },
+  "sonarRemote.controllersRequired": {
+    "defaultMessage": "Enter at least one controller npub."
+  },
+  "sonarRemote.copied": {
+    "defaultMessage": "Copied"
+  },
+  "sonarRemote.copy": {
+    "defaultMessage": "Copy"
+  },
+  "sonarRemote.dedicatedSession": {
+    "defaultMessage": "Create a dedicated remote session"
+  },
+  "sonarRemote.description": {
+    "defaultMessage": "Control Goose from an end-to-end encrypted Sonar group over Nostr."
+  },
+  "sonarRemote.error": {
+    "defaultMessage": "Sonar remote control failed: {error}"
+  },
+  "sonarRemote.forget": {
+    "defaultMessage": "Forget and revoke all"
+  },
+  "sonarRemote.forgetHelp": {
+    "defaultMessage": "Forget removes the saved gateway configuration and all Goose session pairings."
+  },
+  "sonarRemote.generateCode": {
+    "defaultMessage": "Generate pairing code"
+  },
+  "sonarRemote.generating": {
+    "defaultMessage": "Generating…"
+  },
+  "sonarRemote.keepOpen": {
+    "defaultMessage": "Keep this Goose Desktop window open while using Sonar remote control."
+  },
+  "sonarRemote.noPairedGroups": {
+    "defaultMessage": "No groups paired yet."
+  },
+  "sonarRemote.pairedGroups": {
+    "defaultMessage": "Paired groups"
+  },
+  "sonarRemote.pairedSession": {
+    "defaultMessage": "Session {sessionId}"
+  },
+  "sonarRemote.pairingCode": {
+    "defaultMessage": "Pairing code"
+  },
+  "sonarRemote.pairingExpiry": {
+    "defaultMessage": "Send this code in the Sonar group before {time}."
+  },
+  "sonarRemote.pairingHelp": {
+    "defaultMessage": "Choose an existing session, or create a dedicated remote session when the code is sent in Sonar."
+  },
+  "sonarRemote.pairingTitle": {
+    "defaultMessage": "Pair a session"
+  },
+  "sonarRemote.refresh": {
+    "defaultMessage": "Refresh"
+  },
+  "sonarRemote.relays": {
+    "defaultMessage": "Nostr relays"
+  },
+  "sonarRemote.relaysHelp": {
+    "defaultMessage": "Enter one or more WebSocket relay URLs, separated by commas."
+  },
+  "sonarRemote.revoke": {
+    "defaultMessage": "Revoke"
+  },
+  "sonarRemote.running": {
+    "defaultMessage": "Running"
+  },
+  "sonarRemote.securityDescription": {
+    "defaultMessage": "Every group member can read future group traffic. Only controller npubs allowlisted below can execute Goose commands."
+  },
+  "sonarRemote.securityTitle": {
+    "defaultMessage": "Group access and authority"
+  },
+  "sonarRemote.start": {
+    "defaultMessage": "Start remote control"
+  },
+  "sonarRemote.starting": {
+    "defaultMessage": "Starting…"
+  },
+  "sonarRemote.stop": {
+    "defaultMessage": "Stop"
+  },
+  "sonarRemote.stopped": {
+    "defaultMessage": "Stopped"
+  },
+  "sonarRemote.stopping": {
+    "defaultMessage": "Stopping…"
+  },
+  "sonarRemote.title": {
+    "defaultMessage": "Sonar remote control"
+  },
+  "sonarRemote.update": {
+    "defaultMessage": "Update and restart"
+  },
+  "sonarRemote.currentSession": {
+    "defaultMessage": "Current session"
   }
 }

@@ -19,8 +19,10 @@ check-everything:
 # Default release command
 release-binary:
     @echo "Building release version..."
-    cargo build --release -p goose-cli --bin goose
+    cargo build --release -p goose-cli --bin goose --features sonar-gateway
+    cargo build --release --manifest-path integrations/sonar-bridge/Cargo.toml
     @just copy-binary
+    @just copy-sonar-bridge
 
 # Build Windows executable on a Windows host
 [unix]
@@ -35,8 +37,10 @@ release-windows:
 # Build for Intel Mac
 release-intel:
     @echo "Building release version for Intel Mac..."
-    cargo build --release --target x86_64-apple-darwin
+    cargo build --release --target x86_64-apple-darwin -p goose-cli --bin goose --features sonar-gateway
+    cargo build --release --target x86_64-apple-darwin --manifest-path integrations/sonar-bridge/Cargo.toml
     @just copy-binary-intel
+    @just copy-sonar-bridge-intel
 
 copy-binary BUILD_MODE="release":
     @rm -f ./ui/desktop/src/bin/goosed
@@ -49,6 +53,17 @@ copy-binary BUILD_MODE="release":
         exit 1; \
     fi
 
+copy-sonar-bridge:
+    @if [ -f ./integrations/sonar-bridge/target/release/goose-sonar-bridge ]; then \
+        echo "Copying Sonar bridge binary to ui/desktop/src/bin..."; \
+        rm -f ./ui/desktop/src/bin/goose-sonar-bridge; \
+        cp -p ./integrations/sonar-bridge/target/release/goose-sonar-bridge ./ui/desktop/src/bin/; \
+        chmod +x ./ui/desktop/src/bin/goose-sonar-bridge; \
+    else \
+        echo "Sonar bridge binary not found."; \
+        exit 1; \
+    fi
+
 # Copy binary command for Intel build
 copy-binary-intel:
     @rm -f ./ui/desktop/src/bin/goosed
@@ -58,6 +73,17 @@ copy-binary-intel:
         cp -p ./target/x86_64-apple-darwin/release/goose ./ui/desktop/src/bin/; \
     else \
         echo "Intel goose CLI binary not found."; \
+        exit 1; \
+    fi
+
+copy-sonar-bridge-intel:
+    @if [ -f ./integrations/sonar-bridge/target/x86_64-apple-darwin/release/goose-sonar-bridge ]; then \
+        echo "Copying Intel Sonar bridge binary to ui/desktop/src/bin..."; \
+        rm -f ./ui/desktop/src/bin/goose-sonar-bridge; \
+        cp -p ./integrations/sonar-bridge/target/x86_64-apple-darwin/release/goose-sonar-bridge ./ui/desktop/src/bin/; \
+        chmod +x ./ui/desktop/src/bin/goose-sonar-bridge; \
+    else \
+        echo "Intel Sonar bridge binary not found."; \
         exit 1; \
     fi
 
@@ -128,6 +154,7 @@ package-ui:
     cd ui/desktop && pnpm install && pnpm run package
     @echo "Signing with entitlements..."
     codesign --force --deep --sign - --entitlements ui/desktop/entitlements.plist ui/desktop/out/Goose-darwin-arm64/Goose.app
+    node ui/desktop/scripts/verify-sonar-bundle.js ui/desktop/out/Goose-darwin-arm64/Goose.app
     @echo "Done! Launch with: open ui/desktop/out/Goose-darwin-arm64/Goose.app"
 
 # Run UI with latest (Windows version)
