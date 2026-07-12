@@ -30,10 +30,12 @@ const MAX_MESSAGE_BYTES: usize = 64 * 1024;
 const LIVE_WAIT_SECS: u64 = 5;
 const SUBSCRIPTION_REFRESH_SECS: u64 = 60;
 const SAFETY_SYNC_SECS: u64 = 5 * 60;
-const DEFAULT_RELAYS: [&str; 3] = [
+const DEFAULT_RELAYS: [&str; 5] = [
+    "wss://nostr.relay.hedwig.sh/",
     "wss://relay.damus.io",
     "wss://nos.lol",
     "wss://relay.primal.net",
+    "wss://relay.kaleidoswap.com",
 ];
 
 #[derive(Parser, Debug)]
@@ -556,10 +558,15 @@ fn validate_relays(values: &[String]) -> Result<Vec<RelayUrl>> {
     if values.is_empty() {
         return Err(anyhow!("at least one relay is required"));
     }
-    values
+    let relays = values
         .iter()
         .map(|value| RelayUrl::parse(value).with_context(|| format!("invalid relay {value}")))
-        .collect()
+        .collect::<Result<Vec<_>>>()?;
+    let mut seen = HashSet::new();
+    Ok(relays
+        .into_iter()
+        .filter(|relay| seen.insert(relay.clone()))
+        .collect())
 }
 
 fn resolve_home(home: Option<PathBuf>) -> Result<PathBuf> {
@@ -691,6 +698,33 @@ mod tests {
             assert_eq!(mode, 0o600);
         }
         fs::remove_dir_all(temp).unwrap();
+    }
+
+    #[test]
+    fn common_relay_defaults_match_sonar_and_overrides_are_deduplicated() {
+        assert_eq!(
+            DEFAULT_RELAYS,
+            [
+                "wss://nostr.relay.hedwig.sh/",
+                "wss://relay.damus.io",
+                "wss://nos.lol",
+                "wss://relay.primal.net",
+                "wss://relay.kaleidoswap.com",
+            ]
+        );
+        let relays = validate_relays(&[
+            "wss://nostr.relay.hedwig.sh".into(),
+            "wss://nostr.relay.hedwig.sh/".into(),
+            "wss://nos.lol".into(),
+        ])
+        .unwrap();
+        assert_eq!(
+            relays,
+            vec![
+                RelayUrl::parse("wss://nostr.relay.hedwig.sh").unwrap(),
+                RelayUrl::parse("wss://nos.lol").unwrap(),
+            ]
+        );
     }
 
     #[test]

@@ -16,25 +16,36 @@ The gateway and bridge protocol are experimental. Goose Desktop coordinates loca
 Sonar provides authenticated, end-to-end encrypted group transport over Nostr relays. goose adds two local authorization checks:
 
 - The group must be paired to a goose session with a short-lived code.
-- The message sender's authenticated npub must be in the gateway's controller allowlist.
-- The bridge accepts new group invitations only when an allowed controller sent the welcome.
+- The message sender's authenticated npub must be in the gateway's allowed-user list.
+- The bridge accepts new group invitations only when an allowed user sent the welcome.
 
 Joining the group does not grant permission to run goose. Observers can read group traffic but the bridge checkpoints and ignores their commands before they reach the execution queue. Sonar currently allows every MLS group member to administer membership, so share a control group only with people who may read its future messages.
 
-The controller allowlist is local configuration. Group messages cannot add controllers or change goose's permission policy.
+The allowed-user list is local configuration. Every listed npub has equal control. Group messages cannot add users or change goose's permission policy.
 
 ## Goose Desktop setup
 
 Production Goose Desktop bundles the feature-enabled Goose backend and `goose-sonar-bridge`. Open **Settings → External Backend → Sonar remote control** and:
 
-1. Enter the controller npub shown by the Sonar app.
-2. Keep `wss://nostr.relay.hedwig.sh/` as the relay, or enter the relay set used by your Sonar group.
+1. Enter each allowed-user npub shown by the Sonar app.
+2. Keep the editable Sonar relay preset (Hedwig, Damus, nos.lol, Primal, and KaleidoSwap), or enter the relay set used by your group.
 3. Start remote control and copy the Goose bridge npub.
-4. From the allowlisted Sonar controller, invite the bridge npub to a group.
-5. In Goose, choose an existing session or the dedicated remote-session option and generate a pairing code.
-6. Send the pairing code in the Sonar group from the allowlisted controller.
+4. From an allowed Sonar identity, invite the bridge npub to a group.
+5. In Goose, choose an existing session or the dedicated remote-session option and generate the one-time pairing code.
+6. Send the pairing code in the Sonar group from an allowed user.
 
-Keep that Goose Desktop window open while using the remote session. The gateway configuration, bridge identity, and pairings persist across app launches. **Stop** keeps the saved configuration and pairings; **Forget and revoke all** removes the saved gateway configuration and all Goose session pairings. Revoke a single group from its entry in the Paired groups list.
+Fresh configurations use all five relay defaults. Goose leaves any relay text already saved in Desktop unchanged, including an older single-relay configuration, so review it when upgrading.
+
+The group remains authorized after that first code. Any allowed user in the group can manage its active Goose session with:
+
+- `/new [name]` — create and activate a new group-owned session.
+- `/sessions` — list sessions authorized for this group.
+- `/use SESSION_ID` — activate one of those sessions.
+- `/session` — show the active session.
+
+The initial paired session and sessions created with `/new` are the only sessions exposed to that group. Unknown slash commands remain normal Goose prompts.
+
+Keep that Goose Desktop window open while using the remote session. The gateway configuration, bridge identity, authorization, active session, and group-owned session list persist across app launches. **Stop** keeps the saved configuration and authorizations; **Forget and revoke all** removes the saved gateway configuration and all Goose group authorizations. Revoke a single group from its entry in the Paired groups list. Revocation blocks subsequent commands but does not cancel an already-running prompt.
 
 ## Manual CLI build
 
@@ -49,11 +60,11 @@ Install `goose-sonar-bridge` on `PATH`, place it beside the `goose` executable, 
 
 ## Set up a group
 
-1. Get the controller npub from the Sonar app identity you will use to send commands.
+1. Get each allowed-user npub from the Sonar app identities that may send commands.
 2. Initialize the bridge state and print the bridge npub with `goose-sonar-bridge --home /path/to/state identity`.
-3. From the allowed controller identity, add the bridge npub to a Sonar group. The bridge accepts the invite and announces that the group is ready to pair.
+3. From an allowed identity, add the bridge npub to a Sonar group. The bridge accepts the invite and announces that the group is ready to pair.
 4. Generate a pairing code for the goose session.
-5. Send that code to the Sonar group from an allowed controller.
+5. Send that code to the Sonar group from an allowed user. No additional code is required for `/new` or `/use`.
 
 ```bash
 goose gateway start sonar \
@@ -65,13 +76,13 @@ goose gateway start sonar \
 goose gateway pair sonar --session-id SESSION_ID
 ```
 
-`--controller` and `--relay` are repeatable. At least one controller is required. If no relays are supplied, the bridge uses its default public relay set.
+`--controller` and `--relay` are repeatable. Every controller has equal authority, and at least one is required. If no relays are supplied, the bridge uses Hedwig, Damus, nos.lol, Primal, and KaleidoSwap.
 
 Omit `--session-id` to create a dedicated gateway session during pairing. With `--session-id`, the existing session keeps its model, provider, extensions, working directory, and mode. A session can be paired to only one Sonar group at a time.
 
 ## Sharing and revoking access
 
-Invite another person to the Sonar group to share the transcript. They remain an observer until their npub is added with another `--controller` argument and the gateway is restarted. Remove their npub and restart to revoke command authority; remove them from the Sonar group as well to revoke access to future group traffic.
+Invite another person to the Sonar group to share the transcript. They remain an observer until their npub is added to the allowed-user list (the repeatable `--controller` argument in the CLI) and the gateway is restarted. Remove their npub and restart to revoke command authority; remove them from the Sonar group as well to revoke access to future group traffic. Revoking Goose authorization or forgetting the gateway does not remove the bridge or other members from the MLS group.
 
 ## State, backup, and replay behavior
 

@@ -9,13 +9,13 @@ import {
   stopSonarGateway,
   unpairSonarGateway,
 } from '../../../acp/gateways';
+import { SONAR_DEFAULT_RELAYS, splitSonarValues } from '../../../acp/sonarConfig';
 import { acpListRecentSessions, type SessionListItem } from '../../../acp/sessions';
 import { useChatContext } from '../../../contexts/ChatContext';
 import { Button } from '../../ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../ui/card';
 import { Input } from '../../ui/input';
 
-const DEFAULT_RELAY = 'wss://nostr.relay.hedwig.sh/';
 const CONTROLLERS_STORAGE_KEY = 'goose.sonar.controllers';
 const RELAYS_STORAGE_KEY = 'goose.sonar.relays';
 
@@ -29,16 +29,17 @@ const i18n = defineMessages({
   securityDescription: {
     id: 'sonarRemote.securityDescription',
     defaultMessage:
-      'Every group member can read future group traffic. Only controller npubs allowlisted below can execute Goose commands.',
+      'Every group member can read future group traffic. Only allowed user npubs below can execute Goose commands.',
   },
   keepOpen: {
     id: 'sonarRemote.keepOpen',
     defaultMessage: 'Keep this Goose Desktop window open while using Sonar remote control.',
   },
-  controllers: { id: 'sonarRemote.controllers', defaultMessage: 'Controller npubs' },
+  controllers: { id: 'sonarRemote.controllers', defaultMessage: 'Allowed user npubs' },
   controllersHelp: {
     id: 'sonarRemote.controllersHelp',
-    defaultMessage: 'Enter one or more Sonar identity npubs, separated by commas.',
+    defaultMessage:
+      'Enter one or more Sonar identity npubs, separated by commas. Every listed identity has equal control.',
   },
   controllersPlaceholder: {
     id: 'sonarRemote.controllersPlaceholder',
@@ -49,6 +50,10 @@ const i18n = defineMessages({
     id: 'sonarRemote.relaysHelp',
     defaultMessage: 'Enter one or more WebSocket relay URLs, separated by commas.',
   },
+  relaysRequired: {
+    id: 'sonarRemote.relaysRequired',
+    defaultMessage: 'Enter at least one Nostr relay URL.',
+  },
   start: { id: 'sonarRemote.start', defaultMessage: 'Start remote control' },
   update: { id: 'sonarRemote.update', defaultMessage: 'Update and restart' },
   starting: { id: 'sonarRemote.starting', defaultMessage: 'Starting…' },
@@ -57,34 +62,45 @@ const i18n = defineMessages({
   bridgeIdentity: { id: 'sonarRemote.bridgeIdentity', defaultMessage: 'Goose bridge identity' },
   bridgeHelp: {
     id: 'sonarRemote.bridgeHelp',
-    defaultMessage: 'Invite this npub to a Sonar group from an allowlisted controller identity.',
+    defaultMessage: 'Invite this npub to a Sonar group from an allowed user identity.',
   },
   copy: { id: 'sonarRemote.copy', defaultMessage: 'Copy' },
   copied: { id: 'sonarRemote.copied', defaultMessage: 'Copied' },
   refresh: { id: 'sonarRemote.refresh', defaultMessage: 'Refresh' },
-  pairingTitle: { id: 'sonarRemote.pairingTitle', defaultMessage: 'Pair a session' },
+  pairingTitle: { id: 'sonarRemote.pairingTitle', defaultMessage: 'Authorize a group once' },
   pairingHelp: {
     id: 'sonarRemote.pairingHelp',
     defaultMessage:
-      'Choose an existing session, or create a dedicated remote session when the code is sent in Sonar.',
+      'Authorize a group once with an existing session, or create its first dedicated remote session.',
   },
   dedicatedSession: {
     id: 'sonarRemote.dedicatedSession',
     defaultMessage: 'Create a dedicated remote session',
   },
   currentSession: { id: 'sonarRemote.currentSession', defaultMessage: 'Current session' },
-  generateCode: { id: 'sonarRemote.generateCode', defaultMessage: 'Generate pairing code' },
+  generateCode: {
+    id: 'sonarRemote.generateCode',
+    defaultMessage: 'Generate one-time pairing code',
+  },
   generating: { id: 'sonarRemote.generating', defaultMessage: 'Generating…' },
   pairingCode: { id: 'sonarRemote.pairingCode', defaultMessage: 'Pairing code' },
   pairingExpiry: {
     id: 'sonarRemote.pairingExpiry',
     defaultMessage: 'Send this code in the Sonar group before {time}.',
   },
-  pairedGroups: { id: 'sonarRemote.pairedGroups', defaultMessage: 'Paired groups' },
-  noPairedGroups: { id: 'sonarRemote.noPairedGroups', defaultMessage: 'No groups paired yet.' },
+  pairedGroups: { id: 'sonarRemote.pairedGroups', defaultMessage: 'Authorized groups' },
+  noPairedGroups: {
+    id: 'sonarRemote.noPairedGroups',
+    defaultMessage: 'No groups authorized yet.',
+  },
   pairedSession: {
     id: 'sonarRemote.pairedSession',
     defaultMessage: 'Session {sessionId}',
+  },
+  sessionCommands: {
+    id: 'sonarRemote.sessionCommands',
+    defaultMessage:
+      'After authorization, allowed users can send /new [name], /sessions, /use SESSION_ID, or /session in the Sonar group without another code.',
   },
   revoke: { id: 'sonarRemote.revoke', defaultMessage: 'Revoke' },
   stop: { id: 'sonarRemote.stop', defaultMessage: 'Stop' },
@@ -93,21 +109,14 @@ const i18n = defineMessages({
   forgetHelp: {
     id: 'sonarRemote.forgetHelp',
     defaultMessage:
-      'Forget removes the saved gateway configuration and all Goose session pairings.',
+      'Forget removes the saved gateway configuration and all Goose group authorizations.',
   },
   controllersRequired: {
     id: 'sonarRemote.controllersRequired',
-    defaultMessage: 'Enter at least one controller npub.',
+    defaultMessage: 'Enter at least one allowed user npub.',
   },
   error: { id: 'sonarRemote.error', defaultMessage: 'Sonar remote control failed: {error}' },
 });
-
-function splitValues(value: string): string[] {
-  return value
-    .split(/[\n,]/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -121,7 +130,7 @@ export default function SonarRemoteControlSection() {
     () => window.localStorage.getItem(CONTROLLERS_STORAGE_KEY) ?? ''
   );
   const [relays, setRelays] = useState(
-    () => window.localStorage.getItem(RELAYS_STORAGE_KEY) ?? DEFAULT_RELAY
+    () => window.localStorage.getItem(RELAYS_STORAGE_KEY) ?? SONAR_DEFAULT_RELAYS.join(', ')
   );
   const [gateway, setGateway] = useState<GatewayStatusDto>();
   const [sessions, setSessions] = useState<SessionListItem[]>([]);
@@ -169,16 +178,21 @@ export default function SonarRemoteControlSection() {
   }, [refreshStatus]);
 
   const handleStart = async () => {
-    const controllerValues = splitValues(controllers);
+    const controllerValues = splitSonarValues(controllers);
     if (controllerValues.length === 0) {
       setError(intl.formatMessage(i18n.controllersRequired));
+      return;
+    }
+    const relayValues = splitSonarValues(relays);
+    if (relayValues.length === 0) {
+      setError(intl.formatMessage(i18n.relaysRequired));
       return;
     }
     setBusy('start');
     setError(undefined);
     setPairing(undefined);
     try {
-      const status = await startSonarGateway(controllerValues, splitValues(relays));
+      const status = await startSonarGateway(controllerValues, relayValues);
       window.localStorage.setItem(CONTROLLERS_STORAGE_KEY, controllers);
       window.localStorage.setItem(RELAYS_STORAGE_KEY, relays);
       setGateway(status);
@@ -365,6 +379,10 @@ export default function SonarRemoteControlSection() {
               <Button onClick={() => void handlePair()} disabled={Boolean(busy)}>
                 {intl.formatMessage(busy === 'pair' ? i18n.generating : i18n.generateCode)}
               </Button>
+
+              <p className="text-xs text-text-secondary">
+                {intl.formatMessage(i18n.sessionCommands)}
+              </p>
 
               {pairing && (
                 <div className="rounded-md bg-background-secondary p-3">

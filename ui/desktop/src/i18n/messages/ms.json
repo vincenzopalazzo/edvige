@@ -4596,22 +4596,22 @@
     "defaultMessage": "Cipta sesi baharu dengan mesej yang disunting"
   },
   "sonarRemote.bridgeHelp": {
-    "defaultMessage": "Invite this npub to a Sonar group from an allowlisted controller identity."
+    "defaultMessage": "Invite this npub to a Sonar group from an allowed user identity."
   },
   "sonarRemote.bridgeIdentity": {
     "defaultMessage": "Goose bridge identity"
   },
   "sonarRemote.controllers": {
-    "defaultMessage": "Controller npubs"
+    "defaultMessage": "Allowed user npubs"
   },
   "sonarRemote.controllersHelp": {
-    "defaultMessage": "Enter one or more Sonar identity npubs, separated by commas."
+    "defaultMessage": "Enter one or more Sonar identity npubs, separated by commas. Every listed identity has equal control."
   },
   "sonarRemote.controllersPlaceholder": {
     "defaultMessage": "npub1…"
   },
   "sonarRemote.controllersRequired": {
-    "defaultMessage": "Enter at least one controller npub."
+    "defaultMessage": "Enter at least one allowed user npub."
   },
   "sonarRemote.copied": {
     "defaultMessage": "Copied"
@@ -4632,10 +4632,10 @@
     "defaultMessage": "Forget and revoke all"
   },
   "sonarRemote.forgetHelp": {
-    "defaultMessage": "Forget removes the saved gateway configuration and all Goose session pairings."
+    "defaultMessage": "Forget removes the saved gateway configuration and all Goose group authorizations."
   },
   "sonarRemote.generateCode": {
-    "defaultMessage": "Generate pairing code"
+    "defaultMessage": "Generate one-time pairing code"
   },
   "sonarRemote.generating": {
     "defaultMessage": "Generating…"
@@ -4644,10 +4644,10 @@
     "defaultMessage": "Keep this Goose Desktop window open while using Sonar remote control."
   },
   "sonarRemote.noPairedGroups": {
-    "defaultMessage": "No groups paired yet."
+    "defaultMessage": "No groups authorized yet."
   },
   "sonarRemote.pairedGroups": {
-    "defaultMessage": "Paired groups"
+    "defaultMessage": "Authorized groups"
   },
   "sonarRemote.pairedSession": {
     "defaultMessage": "Session {sessionId}"
@@ -4659,10 +4659,10 @@
     "defaultMessage": "Send this code in the Sonar group before {time}."
   },
   "sonarRemote.pairingHelp": {
-    "defaultMessage": "Choose an existing session, or create a dedicated remote session when the code is sent in Sonar."
+    "defaultMessage": "Authorize a group once with an existing session, or create its first dedicated remote session."
   },
   "sonarRemote.pairingTitle": {
-    "defaultMessage": "Pair a session"
+    "defaultMessage": "Authorize a group once"
   },
   "sonarRemote.refresh": {
     "defaultMessage": "Refresh"
@@ -4680,7 +4680,7 @@
     "defaultMessage": "Running"
   },
   "sonarRemote.securityDescription": {
-    "defaultMessage": "Every group member can read future group traffic. Only controller npubs allowlisted below can execute Goose commands."
+    "defaultMessage": "Every group member can read future group traffic. Only allowed user npubs below can execute Goose commands."
   },
   "sonarRemote.securityTitle": {
     "defaultMessage": "Group access and authority"
@@ -4708,5 +4708,11 @@
   },
   "sonarRemote.currentSession": {
     "defaultMessage": "Current session"
+  },
+  "sonarRemote.relaysRequired": {
+    "defaultMessage": "Enter at least one Nostr relay URL."
+  },
+  "sonarRemote.sessionCommands": {
+    "defaultMessage": "After authorization, allowed users can send /new [name], /sessions, /use SESSION_ID, or /session in the Sonar group without another code."
   }
 }

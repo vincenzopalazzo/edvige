@@ -24,6 +24,73 @@ use super::{Gateway, GatewayConfig, IncomingMessage, OutgoingMessage, PairingSta
 /// can override this through `GOOSE_GATEWAY_MAX_TURNS` (gateway-specific) or
 /// `GOOSE_MAX_TURNS` (applies globally).
 const DEFAULT_GATEWAY_MAX_TURNS: u32 = 5;
+const MAX_REMOTE_SESSION_NAME_CHARS: usize = 80;
+const MAX_REMOTE_SESSION_LIST_ENTRIES: usize = 20;
+
+#[derive(Debug, PartialEq, Eq)]
+enum SonarSessionCommand {
+    New(Option<String>),
+    Sessions,
+    Use(String),
+    Session,
+}
+
+fn parse_sonar_session_command(text: &str) -> Option<Result<SonarSessionCommand, String>> {
+    let text = text.trim();
+    let mut parts = text.splitn(2, char::is_whitespace);
+    let command = parts.next()?;
+    let argument = parts
+        .next()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+
+    match command {
+        "/new" => Some(Ok(SonarSessionCommand::New(argument.map(str::to_string)))),
+        "/sessions" if argument.is_none() => Some(Ok(SonarSessionCommand::Sessions)),
+        "/sessions" => Some(Err("Usage: /sessions".into())),
+        "/use" => Some(match argument {
+            Some(session_id) if !session_id.chars().any(char::is_whitespace) => {
+                Ok(SonarSessionCommand::Use(session_id.to_string()))
+            }
+            _ => Err("Usage: /use <session-id>".into()),
+        }),
+        "/session" if argument.is_none() => Some(Ok(SonarSessionCommand::Session)),
+        "/session" => Some(Err("Usage: /session".into())),
+        _ => None,
+    }
+}
+
+fn validate_remote_session_name(name: Option<String>) -> anyhow::Result<Option<String>> {
+    let Some(name) = name else {
+        return Ok(None);
+    };
+    let name = name.trim();
+    if name.is_empty() {
+        return Ok(None);
+    }
+    if name.chars().any(char::is_control) {
+        anyhow::bail!("session name cannot contain control characters");
+    }
+    if name.chars().count() > MAX_REMOTE_SESSION_NAME_CHARS {
+        anyhow::bail!("session name cannot exceed {MAX_REMOTE_SESSION_NAME_CHARS} characters");
+    }
+    Ok(Some(name.to_string()))
+}
+
+fn display_session_name(name: &str) -> String {
+    name.chars()
+        .map(|character| {
+            if character.is_control() {
+                ' '
+            } else {
+                character
+            }
+        })
+        .take(MAX_REMOTE_SESSION_NAME_CHARS)
+        .collect::<String>()
+        .trim()
+        .to_string()
+}
 
 /// Resolve the max turns to use for a gateway session.
 ///
@@ -159,6 +226,28 @@ impl GatewayHandler {
                 }
             }
             PairingState::Paired { session_id, .. } => {
+                if self.config.gateway_type == "sonar" {
+                    if let Some(command) = parse_sonar_session_command(&message.text) {
+                        match command {
+                            Ok(command) => {
+                                self.handle_sonar_session_command(&message, &session_id, command)
+                                    .await?;
+                            }
+                            Err(usage) => self.send_text(&message.user, usage).await?,
+                        }
+                        return Ok(());
+                    }
+                    if let Err(reason) = self.live_session(&session_id).await {
+                        self.send_text(
+                            &message.user,
+                            format!(
+                                "Active session '{session_id}' is unavailable ({reason}). Use /use or /new to recover."
+                            ),
+                        )
+                        .await?;
+                        return Ok(());
+                    }
+                }
                 self.relay_to_session(&message, &session_id).await?;
             }
         }
@@ -176,6 +265,219 @@ impl GatewayHandler {
             return self.pairing_store.consume_pending_code(&normalized).await;
         }
         Ok(None)
+    }
+
+    async fn handle_sonar_session_command(
+        &self,
+        message: &IncomingMessage,
+        active_session_id: &str,
+        command: SonarSessionCommand,
+    ) -> anyhow::Result<()> {
+        match command {
+            SonarSessionCommand::New(name) => {
+                let name = match validate_remote_session_name(name) {
+                    Ok(name) => name,
+                    Err(error) => {
+                        self.send_text(&message.user, format!("Cannot create session: {error}"))
+                            .await?;
+                        return Ok(());
+                    }
+                };
+                let session = self
+                    .create_gateway_session(&message.user, name.as_deref())
+                    .await?;
+                if let Err(error) = self
+                    .pairing_store
+                    .authorize_and_activate_session(&message.user, &session.id)
+                    .await
+                {
+                    if let Err(cleanup_error) = self
+                        .agent_manager
+                        .session_manager()
+                        .delete_session(&session.id)
+                        .await
+                    {
+                        tracing::error!(
+                            session_id = %session.id,
+                            %cleanup_error,
+                            "failed to delete a Sonar session after authorization failed"
+                        );
+                    }
+                    tracing::error!(session_id = %session.id, %error, "failed to authorize a new Sonar session");
+                    self.send_text(
+                        &message.user,
+                        "Could not activate the new Goose session. Your previous session is still active; try /new again.".into(),
+                    )
+                    .await?;
+                    return Ok(());
+                }
+                self.send_text(
+                    &message.user,
+                    format!(
+                        "Created and activated Goose session '{}' ({}).",
+                        display_session_name(&session.name),
+                        session.id
+                    ),
+                )
+                .await?;
+            }
+            SonarSessionCommand::Sessions => {
+                let mut session_ids = self
+                    .pairing_store
+                    .authorized_sessions(&message.user)
+                    .await?;
+                if let Some(position) = session_ids
+                    .iter()
+                    .position(|session_id| session_id == active_session_id)
+                {
+                    session_ids.swap(0, position);
+                }
+                let total = session_ids.len();
+                let mut lines = Vec::new();
+                for session_id in session_ids {
+                    if lines.len() == MAX_REMOTE_SESSION_LIST_ENTRIES {
+                        break;
+                    }
+                    match self
+                        .agent_manager
+                        .session_manager()
+                        .get_session(&session_id, false)
+                        .await
+                    {
+                        Ok(session) if session.archived_at.is_none() => {
+                            let marker = if session.id == active_session_id {
+                                "*"
+                            } else {
+                                "-"
+                            };
+                            lines.push(format!(
+                                "{marker} {} — {}",
+                                display_session_name(&session.name),
+                                session.id
+                            ));
+                        }
+                        Ok(session) if session.id == active_session_id => {
+                            lines.push(format!("* [archived] — {}", session.id));
+                        }
+                        Ok(_) => {}
+                        Err(_) if session_id == active_session_id => {
+                            lines.push(format!("* [missing] — {session_id}"));
+                        }
+                        Err(_) => {}
+                    }
+                }
+                let mut body = if lines.is_empty() {
+                    "No available Goose sessions. Use /new to create one.".to_string()
+                } else {
+                    format!(
+                        "Authorized Goose sessions (* active):\n{}\nUse /use <session-id> to switch.",
+                        lines.join("\n")
+                    )
+                };
+                if total > lines.len() {
+                    body.push_str(&format!(
+                        "\nShowing {} available or active entries from {total} authorized sessions.",
+                        lines.len()
+                    ));
+                }
+                self.send_text(&message.user, body).await?;
+            }
+            SonarSessionCommand::Use(session_id) => {
+                let authorized = self
+                    .pairing_store
+                    .authorized_sessions(&message.user)
+                    .await?;
+                if !authorized
+                    .iter()
+                    .any(|authorized| authorized == &session_id)
+                {
+                    self.send_text(
+                        &message.user,
+                        format!(
+                            "Session '{session_id}' is not authorized for this Sonar group. Use /sessions to list available sessions."
+                        ),
+                    )
+                    .await?;
+                    return Ok(());
+                }
+                let session = match self.live_session(&session_id).await {
+                    Ok(session) => session,
+                    Err(reason) => {
+                        self.send_text(
+                            &message.user,
+                            format!(
+                                "Session '{session_id}' cannot be activated ({reason}). Use /new or /sessions to recover."
+                            ),
+                        )
+                        .await?;
+                        return Ok(());
+                    }
+                };
+                self.pairing_store
+                    .activate_session(&message.user, &session.id)
+                    .await?;
+                let session = match self.live_session(&session.id).await {
+                    Ok(session) => session,
+                    Err(reason) => {
+                        if session_id != active_session_id {
+                            self.pairing_store
+                                .activate_session(&message.user, active_session_id)
+                                .await?;
+                        }
+                        self.send_text(
+                            &message.user,
+                            format!(
+                                "Session '{session_id}' became unavailable ({reason}). Use /use or /new to recover."
+                            ),
+                        )
+                        .await?;
+                        return Ok(());
+                    }
+                };
+                self.send_text(
+                    &message.user,
+                    format!(
+                        "Activated Goose session '{}' ({}).",
+                        display_session_name(&session.name),
+                        session.id
+                    ),
+                )
+                .await?;
+            }
+            SonarSessionCommand::Session => {
+                let body = match self.live_session(active_session_id).await {
+                    Ok(session) => format!(
+                        "Active Goose session: '{}' ({}).",
+                        display_session_name(&session.name),
+                        session.id
+                    ),
+                    Err(reason) => format!(
+                        "Active session '{active_session_id}' is unavailable ({reason}). Use /new or /sessions to recover."
+                    ),
+                };
+                self.send_text(&message.user, body).await?;
+            }
+        }
+        Ok(())
+    }
+
+    async fn live_session(&self, session_id: &str) -> Result<Session, String> {
+        let session = self
+            .agent_manager
+            .session_manager()
+            .get_session(session_id, false)
+            .await
+            .map_err(|_| "not found".to_string())?;
+        if session.archived_at.is_some() {
+            return Err("archived".into());
+        }
+        Ok(session)
+    }
+
+    async fn send_text(&self, user: &PlatformUser, body: String) -> anyhow::Result<()> {
+        self.gateway
+            .send_message(user, OutgoingMessage::Text { body })
+            .await
     }
 
     async fn complete_pairing(
@@ -198,30 +500,69 @@ impl GatewayHandler {
                     self.config.gateway_type == "sonar",
                 )
                 .await?;
-            self.gateway
-                .send_message(
-                    user,
-                    OutgoingMessage::Text {
-                        body: format!("Paired to Goose session '{}'.", session.name),
-                    },
+            let body = if self.config.gateway_type == "sonar" {
+                format!(
+                    "Authorized this group with Goose session '{}'. Use /new, /sessions, /use, or /session without another pairing code.",
+                    session.name
                 )
-                .await?;
+            } else {
+                "Paired! You can now chat with goose.".into()
+            };
+            self.send_text(user, body).await?;
             return Ok(());
         }
 
+        let session = self.create_gateway_session(user, None).await?;
+
+        let now = chrono::Utc::now().timestamp();
+        if let Err(error) = self
+            .pairing_store
+            .pair_with_session(user, &session.id, now, self.config.gateway_type == "sonar")
+            .await
+        {
+            if let Err(cleanup_error) = self
+                .agent_manager
+                .session_manager()
+                .delete_session(&session.id)
+                .await
+            {
+                tracing::error!(
+                    session_id = %session.id,
+                    %cleanup_error,
+                    "failed to delete a gateway session after pairing failed"
+                );
+            }
+            return Err(error);
+        }
+
+        let body = if self.config.gateway_type == "sonar" {
+            "Authorized this group. You can chat with Goose or use /new, /sessions, /use, and /session without another pairing code.".into()
+        } else {
+            "Paired! You can now chat with goose.".into()
+        };
+        self.send_text(user, body).await?;
+
+        Ok(())
+    }
+
+    async fn create_gateway_session(
+        &self,
+        user: &PlatformUser,
+        requested_name: Option<&str>,
+    ) -> anyhow::Result<Session> {
         let working_dir = gateway_working_dir(&user.platform, &user.user_id);
         std::fs::create_dir_all(&working_dir)?;
 
-        let session_name = format!(
-            "{}/{}",
-            user.platform,
-            user.display_name.as_deref().unwrap_or(&user.user_id)
-        );
-
+        let session_name = requested_name.map(str::to_string).unwrap_or_else(|| {
+            format!(
+                "{}/{}",
+                user.platform,
+                user.display_name.as_deref().unwrap_or(&user.user_id)
+            )
+        });
         let config = Config::global();
-        let session = self
-            .agent_manager
-            .session_manager()
+        let manager = self.agent_manager.session_manager();
+        let session = manager
             .create_session(
                 working_dir,
                 session_name,
@@ -230,53 +571,52 @@ impl GatewayHandler {
             )
             .await?;
 
-        let manager = self.agent_manager.session_manager();
+        let result = async {
+            let mut update = manager.update(&session.id);
+            if let Some(name) = requested_name {
+                update = update.user_provided_name(name);
+            }
+            let provider = config.get_goose_provider().ok();
+            if let Some(ref provider) = provider {
+                update = update.provider_name(provider);
+            }
+            if let (Some(ref provider), Ok(model_name)) = (&provider, config.get_goose_model()) {
+                if let Ok(model_config) =
+                    crate::model_config::model_config_from_user_config(provider, &model_name)
+                {
+                    update = update.model_config(model_config);
+                }
+            }
 
-        // Store the current provider and model config on the session so the agent
-        // can be restored after LRU eviction, matching the start_agent flow.
-        let mut update = manager.update(&session.id);
-        let provider = config.get_goose_provider().ok();
-        if let Some(ref provider) = provider {
-            update = update.provider_name(provider);
+            let mut extensions = get_enabled_extensions();
+            extensions.extend(crate::plugins::mcp_servers::enabled_plugin_mcp_servers(
+                Some(&session.working_dir),
+            ));
+            let extensions_state = EnabledExtensionsState::new(extensions);
+            let mut extension_data = session.extension_data.clone();
+            if let Err(error) = extensions_state.to_extension_data(&mut extension_data) {
+                tracing::warn!(%error, "failed to initialize gateway session extensions");
+            } else {
+                update = update.extension_data(extension_data);
+            }
+            update.apply().await?;
+            manager.get_session(&session.id, false).await
         }
-        if let (Some(ref provider), Ok(model_name)) = (&provider, config.get_goose_model()) {
-            if let Ok(model_config) =
-                crate::model_config::model_config_from_user_config(provider, &model_name)
-            {
-                update = update.model_config(model_config);
+        .await;
+
+        match result {
+            Ok(session) => Ok(session),
+            Err(error) => {
+                if let Err(cleanup_error) = manager.delete_session(&session.id).await {
+                    tracing::error!(
+                        session_id = %session.id,
+                        %cleanup_error,
+                        "failed to delete a partially initialized gateway session"
+                    );
+                }
+                Err(error)
             }
         }
-
-        // Store default extensions so load_extensions_from_session works.
-        let mut extensions = get_enabled_extensions();
-        extensions.extend(crate::plugins::mcp_servers::enabled_plugin_mcp_servers(
-            Some(&session.working_dir),
-        ));
-        let extensions_state = EnabledExtensionsState::new(extensions);
-        let mut extension_data = session.extension_data.clone();
-        if let Err(e) = extensions_state.to_extension_data(&mut extension_data) {
-            tracing::warn!(error = %e, "failed to initialize gateway session extensions");
-        } else {
-            update = update.extension_data(extension_data);
-        }
-
-        update.apply().await?;
-
-        let now = chrono::Utc::now().timestamp();
-        self.pairing_store
-            .pair_with_session(user, &session.id, now, self.config.gateway_type == "sonar")
-            .await?;
-
-        self.gateway
-            .send_message(
-                user,
-                OutgoingMessage::Text {
-                    body: "Paired! You can now chat with goose.".into(),
-                },
-            )
-            .await?;
-
-        Ok(())
     }
 
     /// Sync the session's provider, model, and extensions with the current
@@ -676,5 +1016,66 @@ mod tests {
     #[test]
     fn gateway_override_used_when_global_unset() {
         assert_eq!(resolve_gateway_max_turns(Some(25), None), 25);
+    }
+
+    #[test]
+    fn parses_sonar_session_commands_without_changing_opaque_ids() {
+        assert_eq!(
+            parse_sonar_session_command(" /new Release work "),
+            Some(Ok(SonarSessionCommand::New(Some("Release work".into()))))
+        );
+        assert_eq!(
+            parse_sonar_session_command("/new"),
+            Some(Ok(SonarSessionCommand::New(None)))
+        );
+        assert_eq!(
+            parse_sonar_session_command("/sessions"),
+            Some(Ok(SonarSessionCommand::Sessions))
+        );
+        assert_eq!(
+            parse_sonar_session_command("/use 20260712_50"),
+            Some(Ok(SonarSessionCommand::Use("20260712_50".into())))
+        );
+        assert_eq!(
+            parse_sonar_session_command("/session"),
+            Some(Ok(SonarSessionCommand::Session))
+        );
+    }
+
+    #[test]
+    fn rejects_malformed_known_commands_and_forwards_unknown_commands() {
+        assert!(matches!(
+            parse_sonar_session_command("/use"),
+            Some(Err(message)) if message == "Usage: /use <session-id>"
+        ));
+        assert!(matches!(
+            parse_sonar_session_command("/use first second"),
+            Some(Err(message)) if message == "Usage: /use <session-id>"
+        ));
+        assert!(matches!(
+            parse_sonar_session_command("/sessions now"),
+            Some(Err(message)) if message == "Usage: /sessions"
+        ));
+        assert_eq!(parse_sonar_session_command("/useful prompt"), None);
+        assert_eq!(parse_sonar_session_command("/other prompt"), None);
+        assert_eq!(parse_sonar_session_command("ordinary prompt"), None);
+    }
+
+    #[test]
+    fn validates_remote_session_names() {
+        assert_eq!(
+            validate_remote_session_name(Some("  Release work  ".into())).unwrap(),
+            Some("Release work".into())
+        );
+        assert_eq!(
+            validate_remote_session_name(Some("  ".into())).unwrap(),
+            None
+        );
+        assert!(validate_remote_session_name(Some("bad\nname".into())).is_err());
+        assert!(validate_remote_session_name(Some("x".repeat(81))).is_err());
+        assert_eq!(
+            validate_remote_session_name(Some("こんにちは".into())).unwrap(),
+            Some("こんにちは".into())
+        );
     }
 }
