@@ -110,15 +110,17 @@ impl SonarGateway {
             .collect::<anyhow::Result<Vec<_>>>()?;
         platform.controllers.sort();
         platform.controllers.dedup();
-        platform.relays = platform
+        let mut relays = platform
             .relays
             .iter()
             .map(|relay| {
                 RelayUrl::parse(relay)
-                    .map(|relay| relay.to_string())
                     .map_err(|_| anyhow::anyhow!("Sonar relays must be valid ws:// or wss:// URLs"))
             })
             .collect::<anyhow::Result<Vec<_>>>()?;
+        let mut seen_relays = HashSet::new();
+        relays.retain(|relay| seen_relays.insert(relay.clone()));
+        platform.relays = relays.into_iter().map(|relay| relay.to_string()).collect();
         let controllers = Arc::new(platform.controllers.iter().cloned().collect());
         Ok(Self {
             config: platform,
@@ -641,6 +643,24 @@ mod tests {
             "relays": ["https://nostr.relay.hedwig.sh/"]
         })));
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn canonicalizes_and_deduplicates_relays() {
+        let gateway = SonarGateway::new(&config(serde_json::json!({
+            "controllers": [valid_controller()],
+            "relays": [
+                "wss://nostr.relay.hedwig.sh",
+                "wss://nostr.relay.hedwig.sh/",
+                "wss://nos.lol"
+            ]
+        })))
+        .unwrap();
+
+        assert_eq!(
+            gateway.config.relays,
+            ["wss://nostr.relay.hedwig.sh", "wss://nos.lol"]
+        );
     }
 
     #[tokio::test]

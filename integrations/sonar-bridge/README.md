@@ -21,6 +21,8 @@ Initialize the bridge identity and print the npub that should be invited to a So
 goose-sonar-bridge --home /path/to/state identity
 ```
 
+Without explicit `--relay` arguments, fresh bridge state uses the common Sonar relay set: Hedwig, Damus, nos.lol, Primal, and KaleidoSwap. Relay arguments remain repeatable and editable; canonical duplicates are ignored.
+
 ## State and recovery
 
 The bridge creates a Nostr identity, SQLCipher key, Marmot database, and command ledger under its state directory. The default is the Goose data directory's `sonar-gateway` subdirectory; `--home` or `GOOSE_SONAR_HOME` can override it.
@@ -33,7 +35,9 @@ The durable ledger checkpoints existing history when a group first appears. It r
 
 ## Trust boundary
 
-Sonar Core authenticates MLS senders. The bridge accepts group invitations only when the welcome was sent by a configured controller, and the Goose gateway requires the same explicit controller npub allowlist for commands. Group membership grants access to the conversation, not permission to run local tools. All group members can currently administer MLS membership, so only share a group with people who may read its future traffic.
+Sonar Core authenticates MLS senders. The bridge accepts group invitations only when the welcome was sent by a configured allowed user, and the Goose gateway requires the same explicit npub allowlist for commands. Every configured npub has equal control. Group membership grants access to the conversation, not permission to run local tools. All group members can currently administer MLS membership, so only share a group with people who may read its future traffic.
+
+Goose authorizes a group with one short-lived pairing code. After that initial authorization, allowed users can create and switch the group's Goose sessions with `/new`, `/sessions`, `/use`, and `/session`; the bridge does not require or interpret another pairing code. Removing Goose authorization does not remove the bridge from the MLS group.
 
 Sonar Core is pinned by commit in `Cargo.toml` and `Cargo.lock`. Review upstream protocol and storage changes before updating that revision.
 
