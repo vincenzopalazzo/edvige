@@ -1,13 +1,15 @@
 mod protocol;
 
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::{Arc, RwLock as StdRwLock};
 use std::time::Duration;
 
 use async_trait::async_trait;
 use futures::StreamExt;
+use nostr::nips::nip19::{FromBech32, ToBech32};
+use nostr::{PublicKey, RelayUrl};
 use serde::Deserialize;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tokio::process::Command;
@@ -55,7 +57,22 @@ struct GroupWorker {
 }
 
 fn default_bridge_path() -> String {
-    "goose-sonar-bridge".to_string()
+    let binary_name = if cfg!(windows) {
+        "goose-sonar-bridge.exe"
+    } else {
+        "goose-sonar-bridge"
+    };
+    std::env::current_exe()
+        .ok()
+        .and_then(|executable| sibling_bridge_path(&executable, binary_name))
+        .unwrap_or_else(|| PathBuf::from(binary_name))
+        .to_string_lossy()
+        .into_owned()
+}
+
+fn sibling_bridge_path(executable: &Path, binary_name: &str) -> Option<PathBuf> {
+    let candidate = executable.parent()?.join(binary_name);
+    candidate.is_file().then_some(candidate)
 }
 
 #[derive(Clone)]
@@ -76,15 +93,32 @@ impl SonarGateway {
         if platform.controllers.is_empty() {
             anyhow::bail!("Sonar gateway requires at least one controller npub");
         }
-        if platform
+        platform.controllers = platform
             .controllers
             .iter()
-            .any(|npub| !npub.starts_with("npub1"))
-        {
-            anyhow::bail!("Sonar controller identities must use npub1 encoding");
-        }
+            .map(|npub| {
+                PublicKey::from_bech32(npub)
+                    .map(|public_key| {
+                        public_key
+                            .to_bech32()
+                            .expect("public key bech32 encoding is infallible")
+                    })
+                    .map_err(|_| {
+                        anyhow::anyhow!("Sonar controller identities must be valid npub1 keys")
+                    })
+            })
+            .collect::<anyhow::Result<Vec<_>>>()?;
         platform.controllers.sort();
         platform.controllers.dedup();
+        platform.relays = platform
+            .relays
+            .iter()
+            .map(|relay| {
+                RelayUrl::parse(relay)
+                    .map(|relay| relay.to_string())
+                    .map_err(|_| anyhow::anyhow!("Sonar relays must be valid ws:// or wss:// URLs"))
+            })
+            .collect::<anyhow::Result<Vec<_>>>()?;
         let controllers = Arc::new(platform.controllers.iter().cloned().collect());
         Ok(Self {
             config: platform,
@@ -419,10 +453,14 @@ impl Gateway for SonarGateway {
             stdout,
             LinesCodec::new_with_max_length(MAX_PROTOCOL_LINE_BYTES),
         );
-        let ready_line = tokio::time::timeout(START_TIMEOUT, output.next())
-            .await
-            .map_err(|_| anyhow::anyhow!("Sonar bridge did not become ready"))?
-            .ok_or_else(|| anyhow::anyhow!("Sonar bridge exited before ready"))??;
+        let ready_line = tokio::select! {
+            _ = cancel.cancelled() => return Ok(()),
+            result = tokio::time::timeout(START_TIMEOUT, output.next()) => {
+                result
+                    .map_err(|_| anyhow::anyhow!("Sonar bridge did not become ready"))?
+                    .ok_or_else(|| anyhow::anyhow!("Sonar bridge exited before ready"))??
+            }
+        };
         let ready: BridgeEvent = serde_json::from_str(&ready_line)?;
         if !matches!(&ready, BridgeEvent::Ready { .. }) {
             anyhow::bail!("Sonar bridge sent a non-ready first event");
@@ -536,6 +574,23 @@ impl Gateway for SonarGateway {
 mod tests {
     use super::*;
 
+    fn valid_controller() -> String {
+        PublicKey::from_byte_array([1; 32]).to_bech32().unwrap()
+    }
+
+    #[test]
+    fn resolves_bridge_beside_packaged_goose() {
+        let directory = tempfile::tempdir().unwrap();
+        let executable = directory.path().join("goose");
+        let bridge = directory.path().join("goose-sonar-bridge");
+        std::fs::write(&bridge, []).unwrap();
+
+        assert_eq!(
+            sibling_bridge_path(&executable, "goose-sonar-bridge"),
+            Some(bridge)
+        );
+    }
+
     fn config(value: serde_json::Value) -> GatewayConfig {
         GatewayConfig {
             gateway_type: "sonar".into(),
@@ -561,18 +616,38 @@ mod tests {
     }
 
     #[test]
-    fn deduplicates_controllers() {
+    fn rejects_malformed_npub_controllers() {
+        let result = SonarGateway::new(&config(serde_json::json!({
+            "controllers": ["npub1..."]
+        })));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn normalizes_and_deduplicates_controllers() {
+        let controller = valid_controller();
         let gateway = SonarGateway::new(&config(serde_json::json!({
-            "controllers": ["npub1controller", "npub1controller"]
+            "controllers": [controller.clone(), controller.to_uppercase()]
         })))
         .unwrap();
         assert_eq!(gateway.controllers.len(), 1);
+        assert!(gateway.controllers.contains(&controller));
+    }
+
+    #[test]
+    fn rejects_invalid_relay_urls() {
+        let result = SonarGateway::new(&config(serde_json::json!({
+            "controllers": [valid_controller()],
+            "relays": ["https://nostr.relay.hedwig.sh/"]
+        })));
+        assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn failed_command_without_bridge_does_not_leak_pending_response() {
+        let controller = valid_controller();
         let gateway = SonarGateway::new(&config(serde_json::json!({
-            "controllers": ["npub1controller"]
+            "controllers": [controller]
         })))
         .unwrap();
 

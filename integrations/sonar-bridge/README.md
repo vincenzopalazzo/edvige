@@ -13,7 +13,7 @@ cargo build --release --manifest-path integrations/sonar-bridge/Cargo.toml
 cargo build --release -p goose-cli --features sonar-gateway
 ```
 
-Pass the resulting bridge binary to `goose gateway start sonar --bridge-path ...`, or install it as `goose-sonar-bridge` on `PATH`.
+Pass the resulting bridge binary to `goose gateway start sonar --bridge-path ...`, install it as `goose-sonar-bridge` on `PATH`, or place it beside the `goose` executable. Goose Desktop production bundles use the sibling-binary layout automatically.
 
 Initialize the bridge identity and print the npub that should be invited to a Sonar group:
 
@@ -44,7 +44,7 @@ Configure a goose provider first, then run the interactive smoke harness with th
 ```bash
 ./integrations/sonar-bridge/smoke-test.sh \
   --controller npub1yourcontroller \
-  --relay wss://relay.example.com
+  --relay wss://nostr.relay.hedwig.sh/
 ```
 
 Add `--session-id SESSION_ID` to exercise attachment to an existing session. The script builds release binaries, prints the bridge npub, waits for you to invite it, starts an ephemeral gateway, generates the pairing code, and prints the ordered-command and unauthorized-member checks. Bridge MLS state remains in `~/.local/share/goose/sonar-smoke` unless `--state-dir` is supplied.

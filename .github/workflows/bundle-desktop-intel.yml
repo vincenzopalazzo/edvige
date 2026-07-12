@@ -77,7 +77,8 @@ jobs:
         run: |
           source ./bin/activate-hermit
           rustup target add x86_64-apple-darwin
-          cargo build --release -p goose-cli --bin goose --target x86_64-apple-darwin
+          cargo build --release -p goose-cli --bin goose --features sonar-gateway --target x86_64-apple-darwin
+          cargo build --release --manifest-path integrations/sonar-bridge/Cargo.toml --target x86_64-apple-darwin
 
 
 
@@ -98,9 +99,10 @@ jobs:
       - name: Copy backend binary into Electron folder
         run: |
           mkdir -p ui/desktop/src/bin
-          rm -f ui/desktop/src/bin/goose
+          rm -f ui/desktop/src/bin/goose ui/desktop/src/bin/goose-sonar-bridge
           cp target/x86_64-apple-darwin/release/goose ui/desktop/src/bin/goose
-          chmod +x ui/desktop/src/bin/goose
+          cp integrations/sonar-bridge/target/x86_64-apple-darwin/release/goose-sonar-bridge ui/desktop/src/bin/goose-sonar-bridge
+          chmod +x ui/desktop/src/bin/goose ui/desktop/src/bin/goose-sonar-bridge
           ls -la ui/desktop/src/bin/
 
       - name: Cache pnpm dependencies
@@ -158,6 +160,12 @@ jobs:
 
       - name: Verify macOS updater resources
         run: node scripts/verify-mac-update-resources.js "out/Goose-darwin-x64/Goose.app"
+        working-directory: ui/desktop
+
+      - name: Verify Sonar bridge resources
+        env:
+          APPLE_TEAM_ID: ${{ inputs.signing && secrets.APPLE_TEAM_ID || '' }}
+        run: node scripts/verify-sonar-bundle.js "out/Goose-darwin-x64/Goose.app"
         working-directory: ui/desktop
 
       - name: Clean up signing keychain

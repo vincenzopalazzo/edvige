@@ -8,7 +8,7 @@ description: Control a goose session from a shared, end-to-end encrypted Sonar g
 The Sonar Gateway binds one Sonar/Marmot MLS group to one goose session. You can use the Sonar app today and build a compatible goose mobile fork on the same Sonar Core transport later.
 
 :::warning Experimental feature
-The gateway and bridge protocol are experimental. Run one goose backend owner for the controlled session; independently running desktop, ACP, and gateway processes do not yet coordinate session execution.
+The gateway and bridge protocol are experimental. Goose Desktop coordinates local and Sonar prompts through one session manager, but separately started Goose CLI processes do not coordinate with the Desktop app.
 :::
 
 ## Security model
@@ -23,7 +23,20 @@ Joining the group does not grant permission to run goose. Observers can read gro
 
 The controller allowlist is local configuration. Group messages cannot add controllers or change goose's permission policy.
 
-## Build
+## Goose Desktop setup
+
+Production Goose Desktop bundles the feature-enabled Goose backend and `goose-sonar-bridge`. Open **Settings → External Backend → Sonar remote control** and:
+
+1. Enter the controller npub shown by the Sonar app.
+2. Keep `wss://nostr.relay.hedwig.sh/` as the relay, or enter the relay set used by your Sonar group.
+3. Start remote control and copy the Goose bridge npub.
+4. From the allowlisted Sonar controller, invite the bridge npub to a group.
+5. In Goose, choose an existing session or the dedicated remote-session option and generate a pairing code.
+6. Send the pairing code in the Sonar group from the allowlisted controller.
+
+Keep that Goose Desktop window open while using the remote session. The gateway configuration, bridge identity, and pairings persist across app launches. **Stop** keeps the saved configuration and pairings; **Forget and revoke all** removes the saved gateway configuration and all Goose session pairings. Revoke a single group from its entry in the Paired groups list.
+
+## Manual CLI build
 
 Sonar Core uses a SQLite dependency that cannot currently be linked into the goose binary. Build the isolated bridge and the feature-enabled CLI separately:
 
@@ -32,7 +45,7 @@ cargo build --release --manifest-path integrations/sonar-bridge/Cargo.toml
 cargo build --release -p goose-cli --features sonar-gateway
 ```
 
-Install `goose-sonar-bridge` on `PATH`, or pass its path when starting the gateway.
+Install `goose-sonar-bridge` on `PATH`, place it beside the `goose` executable, or pass its path when starting the gateway.
 
 ## Set up a group
 
@@ -47,7 +60,7 @@ goose gateway start sonar \
   --bridge-path /absolute/path/to/goose-sonar-bridge \
   --sonar-home /path/to/state \
   --controller npub1yourcontroller \
-  --relay wss://relay.example.com
+  --relay wss://nostr.relay.hedwig.sh/
 
 goose gateway pair sonar --session-id SESSION_ID
 ```
@@ -83,7 +96,7 @@ After configuring a goose provider, run the repository's interactive release smo
 ```bash
 ./integrations/sonar-bridge/smoke-test.sh \
   --controller npub1yourcontroller \
-  --relay wss://relay.example.com
+  --relay wss://nostr.relay.hedwig.sh/
 ```
 
 The script builds the release binaries and prints the bridge npub. Invite that identity from the configured controller, press Enter, then follow the pairing, ordering, and unauthorized-member checks printed in the terminal. Use `--session-id SESSION_ID` to test an existing session. The gateway uses `--no-persist`, so the smoke run is not saved for automatic restart.

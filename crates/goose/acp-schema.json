@@ -1327,6 +1327,179 @@
       "x-side": "agent",
       "x-method": "_goose/unstable/diagnostics/get"
     },
+    "GatewayStatusRequest_unstable": {
+      "type": "object",
+      "x-side": "agent",
+      "x-method": "_goose/unstable/gateways/status"
+    },
+    "GatewayStatusResponse_unstable": {
+      "type": "object",
+      "properties": {
+        "gateways": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/GatewayStatusDto"
+          }
+        }
+      },
+      "required": [
+        "gateways"
+      ],
+      "x-side": "agent",
+      "x-method": "_goose/unstable/gateways/status"
+    },
+    "GatewayStatusDto": {
+      "type": "object",
+      "properties": {
+        "gatewayType": {
+          "type": "string"
+        },
+        "running": {
+          "type": "boolean"
+        },
+        "configured": {
+          "type": "boolean"
+        },
+        "pairedUsers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/GatewayPairedUserDto"
+          }
+        },
+        "info": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {}
+        }
+      },
+      "required": [
+        "gatewayType",
+        "running",
+        "configured",
+        "pairedUsers"
+      ]
+    },
+    "GatewayPairedUserDto": {
+      "type": "object",
+      "properties": {
+        "platform": {
+          "type": "string"
+        },
+        "userId": {
+          "type": "string"
+        },
+        "displayName": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sessionId": {
+          "type": "string"
+        },
+        "pairedAt": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "platform",
+        "userId",
+        "sessionId",
+        "pairedAt"
+      ]
+    },
+    "StartSonarGatewayRequest_unstable": {
+      "type": "object",
+      "properties": {
+        "controllers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "relays": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        }
+      },
+      "required": [
+        "controllers"
+      ],
+      "x-side": "agent",
+      "x-method": "_goose/unstable/gateways/sonar/start"
+    },
+    "StartSonarGatewayResponse_unstable": {
+      "type": "object",
+      "properties": {
+        "gateway": {
+          "$ref": "#/$defs/GatewayStatusDto"
+        }
+      },
+      "required": [
+        "gateway"
+      ],
+      "x-side": "agent",
+      "x-method": "_goose/unstable/gateways/sonar/start"
+    },
+    "PairSonarGatewayRequest_unstable": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "x-side": "agent",
+      "x-method": "_goose/unstable/gateways/sonar/pair"
+    },
+    "PairSonarGatewayResponse_unstable": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "expiresAt": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "code",
+        "expiresAt"
+      ],
+      "x-side": "agent",
+      "x-method": "_goose/unstable/gateways/sonar/pair"
+    },
+    "StopSonarGatewayRequest_unstable": {
+      "type": "object",
+      "properties": {
+        "forget": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "x-side": "agent",
+      "x-method": "_goose/unstable/gateways/sonar/stop"
+    },
+    "UnpairSonarGatewayRequest_unstable": {
+      "type": "object",
+      "properties": {
+        "groupId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "groupId"
+      ],
+      "x-side": "agent",
+      "x-method": "_goose/unstable/gateways/sonar/unpair"
+    },
     "ListPromptsRequest_unstable": {
       "type": "object",
       "description": "List all available Goose prompt templates.",
@@ -7011,6 +7184,51 @@
                 {
                   "allOf": [
                     {
+                      "$ref": "#/$defs/GatewayStatusRequest_unstable"
+                    }
+                  ],
+                  "description": "Params for _goose/unstable/gateways/status",
+                  "title": "GatewayStatusRequest_unstable"
+                },
+                {
+                  "allOf": [
+                    {
+                      "$ref": "#/$defs/StartSonarGatewayRequest_unstable"
+                    }
+                  ],
+                  "description": "Params for _goose/unstable/gateways/sonar/start",
+                  "title": "StartSonarGatewayRequest_unstable"
+                },
+                {
+                  "allOf": [
+                    {
+                      "$ref": "#/$defs/PairSonarGatewayRequest_unstable"
+                    }
+                  ],
+                  "description": "Params for _goose/unstable/gateways/sonar/pair",
+                  "title": "PairSonarGatewayRequest_unstable"
+                },
+                {
+                  "allOf": [
+                    {
+                      "$ref": "#/$defs/StopSonarGatewayRequest_unstable"
+                    }
+                  ],
+                  "description": "Params for _goose/unstable/gateways/sonar/stop",
+                  "title": "StopSonarGatewayRequest_unstable"
+                },
+                {
+                  "allOf": [
+                    {
+                      "$ref": "#/$defs/UnpairSonarGatewayRequest_unstable"
+                    }
+                  ],
+                  "description": "Params for _goose/unstable/gateways/sonar/unpair",
+                  "title": "UnpairSonarGatewayRequest_unstable"
+                },
+                {
+                  "allOf": [
+                    {
                       "$ref": "#/$defs/ListPromptsRequest_unstable"
                     }
                   ],
@@ -8016,6 +8234,30 @@
                         }
                       ],
                       "title": "DiagnosticsGetResponse_unstable"
+                    },
+                    {
+                      "allOf": [
+                        {
+                          "$ref": "#/$defs/GatewayStatusResponse_unstable"
+                        }
+                      ],
+                      "title": "GatewayStatusResponse_unstable"
+                    },
+                    {
+                      "allOf": [
+                        {
+                          "$ref": "#/$defs/StartSonarGatewayResponse_unstable"
+                        }
+                      ],
+                      "title": "StartSonarGatewayResponse_unstable"
+                    },
+                    {
+                      "allOf": [
+                        {
+                          "$ref": "#/$defs/PairSonarGatewayResponse_unstable"
+                        }
+                      ],
+                      "title": "PairSonarGatewayResponse_unstable"
                     },
                     {
                       "allOf": [

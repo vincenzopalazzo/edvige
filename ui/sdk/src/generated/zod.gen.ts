@@ -599,6 +599,60 @@ export const zDiagnosticsGetResponse_unstable = z.object({
     report: z.unknown()
 });
 
+export const zGatewayStatusRequest_unstable = z.record(z.unknown());
+
+export const zGatewayPairedUserDto = z.object({
+    platform: z.string(),
+    userId: z.string(),
+    displayName: z.union([
+        z.string(),
+        z.null()
+    ]).optional(),
+    sessionId: z.string(),
+    pairedAt: z.number().int()
+});
+
+export const zGatewayStatusDto = z.object({
+    gatewayType: z.string(),
+    running: z.boolean(),
+    configured: z.boolean(),
+    pairedUsers: z.array(zGatewayPairedUserDto),
+    info: z.record(z.string()).optional().default({})
+});
+
+export const zGatewayStatusResponse_unstable = z.object({
+    gateways: z.array(zGatewayStatusDto)
+});
+
+export const zStartSonarGatewayRequest_unstable = z.object({
+    controllers: z.array(z.string()),
+    relays: z.array(z.string()).optional().default([])
+});
+
+export const zStartSonarGatewayResponse_unstable = z.object({
+    gateway: zGatewayStatusDto
+});
+
+export const zPairSonarGatewayRequest_unstable = z.object({
+    sessionId: z.union([
+        z.string(),
+        z.null()
+    ]).optional()
+});
+
+export const zPairSonarGatewayResponse_unstable = z.object({
+    code: z.string(),
+    expiresAt: z.number().int()
+});
+
+export const zStopSonarGatewayRequest_unstable = z.object({
+    forget: z.boolean().optional().default(false)
+});
+
+export const zUnpairSonarGatewayRequest_unstable = z.object({
+    groupId: z.string()
+});
+
 /**
  * List all available Goose prompt templates.
  */
@@ -2836,6 +2890,11 @@ export const zExtRequest = z.object({
             zSetSessionSystemPromptRequest_unstable,
             zSteerSessionRequest_unstable,
             zDiagnosticsGetRequest_unstable,
+            zGatewayStatusRequest_unstable,
+            zStartSonarGatewayRequest_unstable,
+            zPairSonarGatewayRequest_unstable,
+            zStopSonarGatewayRequest_unstable,
+            zUnpairSonarGatewayRequest_unstable,
             zListPromptsRequest_unstable,
             zGetPromptRequest_unstable,
             zSavePromptRequest_unstable,
@@ -2959,6 +3018,9 @@ export const zExtResponse = z.union([
                 zAppsDeleteResponse_unstable,
                 zSteerSessionResponse_unstable,
                 zDiagnosticsGetResponse_unstable,
+                zGatewayStatusResponse_unstable,
+                zStartSonarGatewayResponse_unstable,
+                zPairSonarGatewayResponse_unstable,
                 zListPromptsResponse_unstable,
                 zGetPromptResponse_unstable,
                 zPromptOperationResponse_unstable,

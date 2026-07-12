@@ -72,6 +72,8 @@ import type {
   ExportSessionResponse_unstable,
   ExportSourceRequest_unstable,
   ExportSourceResponse_unstable,
+  GatewayStatusRequest_unstable,
+  GatewayStatusResponse_unstable,
   GetAvailableExtensionsRequest_unstable,
   GetAvailableExtensionsResponse_unstable,
   GetConfigExtensionsRequest_unstable,
@@ -134,6 +136,8 @@ import type {
   OnboardingImportApplyResponse_unstable,
   OnboardingImportScanRequest_unstable,
   OnboardingImportScanResponse_unstable,
+  PairSonarGatewayRequest_unstable,
+  PairSonarGatewayResponse_unstable,
   ParseRecipeRequest_unstable,
   ParseRecipeResponse_unstable,
   PauseScheduleRequest_unstable,
@@ -188,10 +192,14 @@ import type {
   SetToolPermissionsResponse_unstable,
   ShareSessionNostrRequest_unstable,
   ShareSessionNostrResponse_unstable,
+  StartSonarGatewayRequest_unstable,
+  StartSonarGatewayResponse_unstable,
   SteerSessionRequest_unstable,
   SteerSessionResponse_unstable,
+  StopSonarGatewayRequest_unstable,
   TruncateSessionConversationRequest_unstable,
   UnarchiveSessionRequest_unstable,
+  UnpairSonarGatewayRequest_unstable,
   UnpauseScheduleRequest_unstable,
   UpdateScheduleRequest_unstable,
   UpdateScheduleResponse_unstable,
@@ -224,6 +232,7 @@ import {
   zEncodeRecipeResponse_unstable,
   zExportSessionResponse_unstable,
   zExportSourceResponse_unstable,
+  zGatewayStatusResponse_unstable,
   zGetAvailableExtensionsResponse_unstable,
   zGetConfigExtensionsResponse_unstable,
   zGetPromptResponse_unstable,
@@ -254,6 +263,7 @@ import {
   zLocalInferenceModelsListResponse_unstable,
   zOnboardingImportApplyResponse_unstable,
   zOnboardingImportScanResponse_unstable,
+  zPairSonarGatewayResponse_unstable,
   zParseRecipeResponse_unstable,
   zPreferencesReadResponse_unstable,
   zPromptOperationResponse_unstable,
@@ -274,6 +284,7 @@ import {
   zScanRecipeResponse_unstable,
   zSetToolPermissionsResponse_unstable,
   zShareSessionNostrResponse_unstable,
+  zStartSonarGatewayResponse_unstable,
   zSteerSessionResponse_unstable,
   zUpdateScheduleResponse_unstable,
   zUpdateSourceResponse_unstable,
@@ -420,6 +431,54 @@ export class GooseExtClient {
     return zDiagnosticsGetResponse_unstable.parse(
       raw,
     ) as DiagnosticsGetResponse_unstable;
+  }
+
+  async gatewaysStatus_unstable(
+    params: GatewayStatusRequest_unstable,
+  ): Promise<GatewayStatusResponse_unstable> {
+    const raw = await this.conn.extMethod(
+      "_goose/unstable/gateways/status",
+      params,
+    );
+    return zGatewayStatusResponse_unstable.parse(
+      raw,
+    ) as GatewayStatusResponse_unstable;
+  }
+
+  async gatewaysSonarStart_unstable(
+    params: StartSonarGatewayRequest_unstable,
+  ): Promise<StartSonarGatewayResponse_unstable> {
+    const raw = await this.conn.extMethod(
+      "_goose/unstable/gateways/sonar/start",
+      params,
+    );
+    return zStartSonarGatewayResponse_unstable.parse(
+      raw,
+    ) as StartSonarGatewayResponse_unstable;
+  }
+
+  async gatewaysSonarPair_unstable(
+    params: PairSonarGatewayRequest_unstable,
+  ): Promise<PairSonarGatewayResponse_unstable> {
+    const raw = await this.conn.extMethod(
+      "_goose/unstable/gateways/sonar/pair",
+      params,
+    );
+    return zPairSonarGatewayResponse_unstable.parse(
+      raw,
+    ) as PairSonarGatewayResponse_unstable;
+  }
+
+  async gatewaysSonarStop_unstable(
+    params: StopSonarGatewayRequest_unstable,
+  ): Promise<void> {
+    await this.conn.extMethod("_goose/unstable/gateways/sonar/stop", params);
+  }
+
+  async gatewaysSonarUnpair_unstable(
+    params: UnpairSonarGatewayRequest_unstable,
+  ): Promise<void> {
+    await this.conn.extMethod("_goose/unstable/gateways/sonar/unpair", params);
   }
 
   async configPromptsList_unstable(

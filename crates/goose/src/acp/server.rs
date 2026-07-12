@@ -25,6 +25,7 @@ use crate::conversation::message::{
     ToolRequest,
 };
 use crate::execution::manager::{AgentManager, AgentManagerGetResult, RuntimeContext};
+use crate::gateway::manager::GatewayManager;
 use crate::mcp_utils::ToolResult;
 use crate::permission::permission_confirmation::PrincipalType;
 use crate::permission::{Permission, PermissionConfirmation};
@@ -92,6 +93,7 @@ mod dispatch;
 mod elicitation;
 mod extensions;
 mod fork_session;
+mod gateway;
 mod list_sessions;
 mod load_session;
 mod local_inference;
@@ -187,6 +189,37 @@ struct ActivePromptRun {
     cancel_token: CancellationToken,
 }
 
+struct ActivePromptRunCleanup {
+    session_id: String,
+    run_id: String,
+    active_prompt_runs: Arc<Mutex<HashMap<String, ActivePromptRun>>>,
+    agent_manager: Arc<AgentManager>,
+}
+
+impl Drop for ActivePromptRunCleanup {
+    fn drop(&mut self) {
+        let session_id = self.session_id.clone();
+        let run_id = self.run_id.clone();
+        let active_prompt_runs = Arc::clone(&self.active_prompt_runs);
+        let agent_manager = Arc::clone(&self.agent_manager);
+        let Ok(runtime) = tokio::runtime::Handle::try_current() else {
+            return;
+        };
+        runtime.spawn(async move {
+            let mut active_prompt_runs = active_prompt_runs.lock().await;
+            let Some(active_run) = active_prompt_runs.get(&session_id) else {
+                return;
+            };
+            if active_run.run_id != run_id {
+                return;
+            }
+            active_run.cancel_token.cancel();
+            agent_manager.unregister_cancel_token(&session_id).await;
+            active_prompt_runs.remove(&session_id);
+        });
+    }
+}
+
 /// A run of consecutive ToolRequest blocks within one assistant message,
 /// tracked by [`GooseAcpSession::chain_membership`]. Used to drive a single
 /// LLM summary for the whole run once every step has a recorded ToolResponse.
@@ -215,6 +248,7 @@ pub struct GooseAcpAgent {
     active_prompt_runs: Arc<Mutex<HashMap<String, ActivePromptRun>>>,
     closed_session_ids: Arc<Mutex<HashSet<String>>>,
     agent_manager: Arc<AgentManager>,
+    gateway_manager: Option<Arc<GatewayManager>>,
     provider_factory: AcpProviderFactory,
     builtins: Vec<String>,
     client_fs_capabilities: OnceCell<FileSystemCapabilities>,
@@ -947,12 +981,20 @@ impl GooseAcpAgent {
             options.goose_platform.clone(),
         );
         let agent_manager = Arc::new(AgentManager::new(agent_config, None).await?);
+        let gateway_manager = if matches!(options.goose_platform, GoosePlatform::GooseDesktop) {
+            let manager = Arc::new(GatewayManager::new(Arc::clone(&agent_manager))?);
+            manager.check_auto_start().await;
+            Some(manager)
+        } else {
+            None
+        };
 
         Ok(Self {
             sessions: Arc::new(Mutex::new(HashMap::new())),
             active_prompt_runs: Arc::new(Mutex::new(HashMap::new())),
             closed_session_ids: Arc::new(Mutex::new(HashSet::new())),
             agent_manager,
+            gateway_manager,
             provider_factory: options.provider_factory,
             builtins: options.builtins,
             client_fs_capabilities: OnceCell::new(),
@@ -2356,7 +2398,7 @@ impl GooseAcpAgent {
         session_id: &str,
         run_id: String,
         cancel_token: CancellationToken,
-    ) -> Result<(), agent_client_protocol::Error> {
+    ) -> Result<ActivePromptRunCleanup, agent_client_protocol::Error> {
         if self.closed_session_ids.lock().await.contains(session_id) {
             return Err(agent_client_protocol::Error::resource_not_found(Some(
                 session_id.to_string(),
@@ -2372,29 +2414,40 @@ impl GooseAcpAgent {
             )));
         }
 
+        self.agent_manager
+            .try_register_cancel_token(session_id, cancel_token.clone())
+            .await
+            .map_err(|error| {
+                agent_client_protocol::Error::invalid_params().data(error.to_string())
+            })?;
+
         active_prompt_runs.insert(
             session_id.to_string(),
             ActivePromptRun {
-                run_id,
+                run_id: run_id.clone(),
                 cancel_token,
             },
         );
-        Ok(())
+        Ok(ActivePromptRunCleanup {
+            session_id: session_id.to_string(),
+            run_id,
+            active_prompt_runs: Arc::clone(&self.active_prompt_runs),
+            agent_manager: Arc::clone(&self.agent_manager),
+        })
     }
 
     async fn clear_active_run(&self, session_id: &str, run_id: &str) {
-        {
-            let mut active_prompt_runs = self.active_prompt_runs.lock().await;
-            let Some(active_run) = active_prompt_runs.get(session_id) else {
-                return;
-            };
+        let mut active_prompt_runs = self.active_prompt_runs.lock().await;
+        let Some(active_run) = active_prompt_runs.get(session_id) else {
+            return;
+        };
 
-            if active_run.run_id != run_id {
-                return;
-            }
-
-            active_prompt_runs.remove(session_id);
+        if active_run.run_id != run_id {
+            return;
         }
+        self.agent_manager.unregister_cancel_token(session_id).await;
+        active_prompt_runs.remove(session_id);
+        drop(active_prompt_runs);
 
         let agent = {
             let sessions = self.sessions.lock().await;
@@ -2559,7 +2612,8 @@ impl GooseAcpAgent {
 
         let run_id = format!("run_{}", Uuid::new_v4());
         let cancel_token = CancellationToken::new();
-        self.start_active_run(&session_id, run_id.clone(), cancel_token.clone())
+        let _active_run_cleanup = self
+            .start_active_run(&session_id, run_id.clone(), cancel_token.clone())
             .await?;
 
         let agent = match self.get_session_agent(&session_id).await {
@@ -2747,20 +2801,26 @@ impl GooseAcpAgent {
                     if let Some(update) =
                         tool_notifications::tool_notification_update(request_id, notification)
                     {
-                        cx.send_notification(SessionNotification::new(
+                        if let Err(error) = cx.send_notification(SessionNotification::new(
                             args.session_id.clone(),
                             update,
-                        ))?;
+                        )) {
+                            stream_error = Some(error);
+                            break;
+                        }
                     }
                 }
                 Ok(crate::agents::AgentEvent::MessageUsage { message_id, usage }) => {
                     if self.supports_goose_custom_notifications() {
-                        cx.send_notification(GooseSessionNotification {
+                        if let Err(error) = cx.send_notification(GooseSessionNotification {
                             session_id: session_id.clone(),
                             update: GooseSessionUpdate::MessageUsage(message_usage_update(
                                 message_id, &usage,
                             )),
-                        })?;
+                        }) {
+                            stream_error = Some(error);
+                            break;
+                        }
                     }
                 }
                 Ok(_) => {}
