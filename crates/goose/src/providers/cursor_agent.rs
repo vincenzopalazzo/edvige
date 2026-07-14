@@ -23,7 +23,19 @@ use rmcp::model::Tool;
 
 const CURSOR_AGENT_PROVIDER_NAME: &str = "cursor-agent";
 pub const CURSOR_AGENT_DEFAULT_MODEL: &str = "auto";
-pub const CURSOR_AGENT_KNOWN_MODELS: &[&str] = &["auto", "composer-2", "composer-2-fast"];
+pub const CURSOR_AGENT_KNOWN_MODELS: &[&str] = &[
+    "auto",
+    "cursor-grok-4.5-high",
+    "cursor-grok-4.5-high-fast",
+    "cursor-grok-4.5-medium",
+    "cursor-grok-4.5-medium-fast",
+    "cursor-grok-4.5-low",
+    "cursor-grok-4.5-low-fast",
+    "composer-2.5",
+    "composer-2.5-fast",
+    "composer-2",
+    "composer-2-fast",
+];
 
 pub const CURSOR_AGENT_DOC_URL: &str = "https://docs.cursor.com/en/cli/overview";
 
@@ -380,5 +392,35 @@ impl Provider for CursorAgentProvider {
 
         let provider_usage = ProviderUsage::new(model_config.model_name.clone(), usage);
         Ok(stream_from_single_message(message, provider_usage))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use goose_providers::base::ProviderDescriptor;
+
+    #[test]
+    fn metadata_exposes_cursor_grok_4_5_models() {
+        let metadata = CursorAgentProvider::metadata();
+        let models: Vec<_> = metadata
+            .known_models
+            .iter()
+            .map(|model| model.name.as_str())
+            .collect();
+
+        for expected in [
+            "cursor-grok-4.5-high",
+            "cursor-grok-4.5-high-fast",
+            "cursor-grok-4.5-medium",
+            "cursor-grok-4.5-medium-fast",
+            "cursor-grok-4.5-low",
+            "cursor-grok-4.5-low-fast",
+        ] {
+            assert!(
+                models.contains(&expected),
+                "Cursor Agent metadata should include {expected}"
+            );
+        }
     }
 }
