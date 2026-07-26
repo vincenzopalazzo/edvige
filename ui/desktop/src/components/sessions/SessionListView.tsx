@@ -14,6 +14,7 @@ import {
   LoaderCircle,
   ExternalLink,
   Copy,
+  Archive,
 } from 'lucide-react';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
@@ -47,6 +48,7 @@ import {
   acpImportSession,
   acpListSessions,
   acpRenameSession,
+  acpSetSessionStatus,
   acpShareSessionNostr,
   type SessionListItem,
 } from '../../acp/sessions';
@@ -146,6 +148,9 @@ const i18n = defineMessages({
   editSessionName: { id: 'sessions.action.editName', defaultMessage: 'Edit session name' },
   duplicateSession: { id: 'sessions.action.duplicate', defaultMessage: 'Duplicate session' },
   deleteSession: { id: 'sessions.action.delete', defaultMessage: 'Delete session' },
+  archiveSession: { id: 'sessions.action.archive', defaultMessage: 'Archive session' },
+  archiveSuccess: { id: 'sessions.toast.archived', defaultMessage: 'Session "{name}" archived' },
+  archiveFailed: { id: 'sessions.toast.archiveFailed', defaultMessage: 'Failed to archive session "{name}": {error}' },
   exportSession: { id: 'sessions.action.export', defaultMessage: 'Export session' },
   exportAsJson: { id: 'sessions.action.exportJson', defaultMessage: 'JSON' },
   exportAsMarkdown: { id: 'sessions.action.exportMarkdown', defaultMessage: 'Markdown' },
@@ -524,6 +529,25 @@ const SessionListView: React.FC<SessionListViewProps> = React.memo(({ onSelectSe
     setShowDeleteConfirmation(true);
   }, []);
 
+  const handleArchiveSession = useCallback(
+    async (session: SessionListItem) => {
+      try {
+        await acpSetSessionStatus(session.id, 'archived');
+        toast.success(intl.formatMessage(i18n.archiveSuccess, { name: session.name }));
+        await loadSessions();
+      } catch (error) {
+        console.error('Error archiving session:', error);
+        toast.error(
+          intl.formatMessage(i18n.archiveFailed, {
+            name: session.name,
+            error: errorMessage(error, 'Unknown error'),
+          })
+        );
+      }
+    },
+    [loadSessions, intl]
+  );
+
   const handleDuplicateSession = useCallback(
     async (session: SessionListItem) => {
       try {
@@ -713,6 +737,7 @@ const SessionListView: React.FC<SessionListViewProps> = React.memo(({ onSelectSe
     onEditClick,
     onDuplicateClick,
     onDeleteClick,
+    onArchiveClick,
     onExportClick,
     onShareClick,
     onOpenInNewWindow,
@@ -722,6 +747,7 @@ const SessionListView: React.FC<SessionListViewProps> = React.memo(({ onSelectSe
     onEditClick: (session: SessionListItem) => void;
     onDuplicateClick: (session: SessionListItem) => void;
     onDeleteClick: (session: SessionListItem) => void;
+    onArchiveClick: (session: SessionListItem) => void;
     onExportClick: (session: SessionListItem, format: SessionExportFormat) => void;
     onShareClick: (session: SessionListItem, e: React.MouseEvent) => void;
     onOpenInNewWindow: (session: SessionListItem, e: React.MouseEvent) => void;
@@ -749,6 +775,14 @@ const SessionListView: React.FC<SessionListViewProps> = React.memo(({ onSelectSe
         onDeleteClick(session);
       },
       [onDeleteClick, session]
+    );
+
+    const handleArchiveClick = useCallback(
+      (e: React.MouseEvent) => {
+        e.stopPropagation();
+        onArchiveClick(session);
+      },
+      [onArchiveClick, session]
     );
 
     const handleCardClick = useCallback(() => {
@@ -802,6 +836,11 @@ const SessionListView: React.FC<SessionListViewProps> = React.memo(({ onSelectSe
               <MessageSquareText className="w-3 h-3 mr-1" />
               <span className="font-mono">{session.messageCount}</span>
             </div>
+            {session.status && session.status !== 'active' && (
+              <span className="px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wide bg-gray-100 dark:bg-gray-700 text-text-secondary">
+                {session.status}
+              </span>
+            )}
           </div>
         </div>
         <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 has-data-[state=open]:opacity-100 transition-opacity">
@@ -825,6 +864,13 @@ const SessionListView: React.FC<SessionListViewProps> = React.memo(({ onSelectSe
             title={intl.formatMessage(i18n.duplicateSession)}
           >
             <Copy className="w-3 h-3 text-text-secondary hover:text-text-primary" />
+          </button>
+          <button
+            onClick={handleArchiveClick}
+            className="p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
+            title={intl.formatMessage(i18n.archiveSession)}
+          >
+            <Archive className="w-3 h-3 text-text-secondary hover:text-text-primary" />
           </button>
           <button
             onClick={handleDeleteClick}
@@ -962,6 +1008,7 @@ const SessionListView: React.FC<SessionListViewProps> = React.memo(({ onSelectSe
                   onEditClick={handleEditSession}
                   onDuplicateClick={handleDuplicateSession}
                   onDeleteClick={handleDeleteSession}
+                  onArchiveClick={handleArchiveSession}
                   onExportClick={handleExportSession}
                   onShareClick={handleShareSessionNostr}
                   onOpenInNewWindow={handleOpenInNewWindow}

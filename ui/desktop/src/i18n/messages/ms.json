@@ -3770,6 +3770,9 @@
   "sessionIndicators.streaming": {
     "defaultMessage": "Penstriman"
   },
+  "sessions.action.archive": {
+    "defaultMessage": "Arkibkan sesi"
+  },
   "sessions.action.delete": {
     "defaultMessage": "Padam sesi"
   },
@@ -3871,6 +3874,12 @@
   },
   "sessions.shareNostr.title": {
     "defaultMessage": "Pautan Kongsi Nostr Tersulit"
+  },
+  "sessions.toast.archiveFailed": {
+    "defaultMessage": "Gagal mengarkibkan sesi \"{name}\": {error}"
+  },
+  "sessions.toast.archived": {
+    "defaultMessage": "Sesi \"{name}\" berjaya diarkibkan"
   },
   "sessions.toast.copied": {
     "defaultMessage": "Disalin ke papan keratan"
