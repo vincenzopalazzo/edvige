@@ -24,7 +24,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock};
 use tracing::{info, warn};
 
-pub const CURRENT_SCHEMA_VERSION: i32 = 16;
+pub const CURRENT_SCHEMA_VERSION: i32 = 17;
 pub const SESSIONS_FOLDER: &str = "sessions";
 pub const DB_NAME: &str = "sessions.db";
 const MILLISECOND_TIMESTAMP_THRESHOLD: i64 = 10_000_000_000;
@@ -53,6 +53,30 @@ pub enum SessionType {
     Terminal,
     Gateway,
     Acp,
+}
+
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    strum::Display,
+    strum::EnumString,
+)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum SessionStatus {
+    #[default]
+    Active,
+    Archived,
+    Completed,
+    Superseded,
+    Pending,
+    Rejected,
 }
 
 static SESSION_STORAGE: LazyLock<Arc<SessionStorage>> =
@@ -89,6 +113,8 @@ pub struct Session {
     pub goose_mode: GooseMode,
     #[serde(default)]
     pub archived_at: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub status: SessionStatus,
     #[serde(default)]
     pub project_id: Option<String>,
     #[serde(default)]
@@ -164,6 +190,7 @@ pub struct SessionUpdateBuilder<'a> {
     model_config: Option<Option<ModelConfig>>,
     goose_mode: Option<GooseMode>,
     archived_at: Option<Option<DateTime<Utc>>>,
+    status: Option<SessionStatus>,
 
     project_id: Option<Option<String>>,
     parent_session_id: Option<Option<String>>,
@@ -202,6 +229,7 @@ impl<'a> SessionUpdateBuilder<'a> {
             model_config: None,
             goose_mode: None,
             archived_at: None,
+            status: None,
             project_id: None,
             parent_session_id: None,
         }
@@ -302,6 +330,11 @@ impl<'a> SessionUpdateBuilder<'a> {
         self
     }
 
+    pub fn status(mut self, status: SessionStatus) -> Self {
+        self.status = Some(status);
+        self
+    }
+
     pub fn project_id(mut self, project_id: Option<String>) -> Self {
         self.project_id = Some(project_id);
         self
@@ -335,6 +368,7 @@ pub(crate) struct SessionListFilters<'a> {
     pub(crate) working_dir: Option<&'a Path>,
     pub(crate) keyword: Option<&'a str>,
     pub(crate) only_sessions_with_messages: bool,
+    pub(crate) include_archived: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -474,6 +508,23 @@ impl SessionManager {
                 limit: Some(limit),
                 ..Default::default()
             })
+            .await
+    }
+
+    pub async fn list_sessions_including_archived(&self) -> Result<Vec<Session>> {
+        self.storage.list_sessions_including_archived().await
+    }
+
+    pub async fn set_session_status(&self, id: &str, status: SessionStatus) -> Result<()> {
+        let session = self.get_session(id, false).await?;
+        let archived_at = match status {
+            SessionStatus::Active | SessionStatus::Pending => None,
+            _ => Some(session.archived_at.unwrap_or_else(chrono::Utc::now)),
+        };
+        self.update(id)
+            .status(status)
+            .archived_at(archived_at)
+            .apply()
             .await
     }
 
@@ -761,6 +812,7 @@ impl Default for Session {
             model_config: None,
             goose_mode: GooseMode::default(),
             archived_at: None,
+            status: SessionStatus::default(),
             project_id: None,
             parent_session_id: None,
             last_message_snippet: None,
@@ -880,6 +932,11 @@ impl sqlx::FromRow<'_, sqlx::sqlite::SqliteRow> for Session {
                 .and_then(|s| s.parse().ok())
                 .unwrap_or_default(),
             archived_at: row.try_get("archived_at").ok(),
+            status: row
+                .try_get::<String, _>("status")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or_default(),
             project_id: row.try_get("project_id").ok().flatten(),
             parent_session_id: row.try_get("parent_session_id").ok().flatten(),
             last_message_snippet: None,
@@ -1036,6 +1093,7 @@ impl SessionStorage {
                 model_config_json TEXT,
                 goose_mode TEXT NOT NULL DEFAULT 'auto',
                 archived_at TIMESTAMP,
+                status TEXT NOT NULL DEFAULT 'active',
                 project_id TEXT,
                 parent_session_id TEXT
             )
@@ -1590,6 +1648,26 @@ impl SessionStorage {
                 .execute(&mut **tx)
                 .await?;
             }
+            17 => {
+                let has_status = sqlx::query_scalar::<_, i32>(
+                    "SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'status'",
+                )
+                .fetch_one(&mut **tx)
+                .await?
+                    > 0;
+                if !has_status {
+                    sqlx::query(
+                        "ALTER TABLE sessions ADD COLUMN status TEXT NOT NULL DEFAULT 'active'",
+                    )
+                    .execute(&mut **tx)
+                    .await?;
+                    sqlx::query(
+                        "UPDATE sessions SET status = 'archived' WHERE archived_at IS NOT NULL",
+                    )
+                    .execute(&mut **tx)
+                    .await?;
+                }
+            }
             _ => {
                 anyhow::bail!("Unknown migration version: {}", version);
             }
@@ -1655,7 +1733,7 @@ impl SessionStorage {
                accumulated_cost,
                schedule_id, recipe_json, user_recipe_values_json,
                provider_name, model_config_json, goose_mode,
-               archived_at, project_id, parent_session_id
+               archived_at, status, project_id, parent_session_id
         FROM sessions
         WHERE id = ?
     "#,
@@ -1698,7 +1776,20 @@ impl SessionStorage {
     }
 
     #[allow(clippy::too_many_lines)]
-    async fn apply_update(&self, builder: SessionUpdateBuilder<'_>) -> Result<()> {
+    async fn apply_update(&self, mut builder: SessionUpdateBuilder<'_>) -> Result<()> {
+        if builder.status.is_some() && builder.archived_at.is_none() {
+            builder.archived_at = match builder.status {
+                Some(SessionStatus::Active) | Some(SessionStatus::Pending) => Some(None),
+                _ => Some(Some(chrono::Utc::now())),
+            };
+        }
+        if builder.archived_at.is_some() && builder.status.is_none() {
+            builder.status = match builder.archived_at {
+                Some(None) => Some(SessionStatus::Active),
+                Some(Some(_)) => Some(SessionStatus::Archived),
+                None => None,
+            };
+        }
         let mut updates = Vec::new();
         let mut query = String::from("UPDATE sessions SET ");
 
@@ -1738,6 +1829,7 @@ impl SessionStorage {
         add_update!(builder.model_config, "model_config_json");
         add_update!(builder.goose_mode, "goose_mode");
         add_update!(builder.archived_at, "archived_at");
+        add_update!(builder.status, "status");
 
         add_update!(builder.project_id, "project_id");
         add_update!(builder.parent_session_id, "parent_session_id");
@@ -1812,6 +1904,9 @@ impl SessionStorage {
         }
         if let Some(ref archived_at) = builder.archived_at {
             q = q.bind(archived_at.as_ref());
+        }
+        if let Some(status) = builder.status {
+            q = q.bind(status.to_string());
         }
 
         if let Some(ref project_id) = builder.project_id {
@@ -2014,6 +2109,9 @@ impl SessionStorage {
         if filters.working_dir.is_some() {
             where_clauses.push("s.working_dir = ?".to_string());
         }
+        if !filters.include_archived {
+            where_clauses.push("s.archived_at IS NULL".to_string());
+        }
         if !keywords.is_empty() {
             where_clauses.push(message_keyword_clause(keywords.len()));
         }
@@ -2059,7 +2157,7 @@ impl SessionStorage {
                    s.accumulated_cost,
                    s.schedule_id, s.recipe_json, s.user_recipe_values_json,
                    s.provider_name, s.model_config_json, s.goose_mode,
-                   s.archived_at, s.project_id, s.parent_session_id,
+                   s.archived_at, s.status, s.project_id, s.parent_session_id,
                    {} as message_count,
                    MAX({}) as last_message_timestamp,
                    {} as sort_timestamp
@@ -2150,9 +2248,22 @@ impl SessionStorage {
         Ok(())
     }
 
+    async fn list_sessions_including_archived(&self) -> Result<Vec<Session>> {
+        self.list_sessions_matching(SessionListQuery {
+            filters: SessionListFilters {
+                types: Some(&[SessionType::User, SessionType::Scheduled]),
+                include_archived: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+        .await
+    }
+
     async fn list_sessions_by_types(&self, types: Option<&[SessionType]>) -> Result<Vec<Session>> {
         self.list_sessions_matching(SessionListQuery {
             filters: SessionListFilters {
+                include_archived: false,
                 types,
                 ..Default::default()
             },
@@ -3532,6 +3643,7 @@ mod tests {
         let page = sm
             .list_sessions_paged(SessionListPageQuery {
                 filters: SessionListFilters {
+                    include_archived: false,
                     types: Some(&types),
                     working_dir: working_dir.map(Path::new),
                     only_sessions_with_messages: true,
@@ -3643,6 +3755,85 @@ mod tests {
                 .filter_map(|r| r.as_ref().err().map(ToString::to_string))
                 .collect::<Vec<_>>()
         );
+    }
+
+    #[tokio::test]
+    async fn test_set_session_status_transitions() {
+        let temp_dir = TempDir::new().unwrap();
+        let sm = SessionManager::new(temp_dir.path().to_path_buf());
+        let id = create_session_for_list(&sm, "/tmp/session-status", false).await;
+
+        sm.set_session_status(&id, SessionStatus::Pending)
+            .await
+            .unwrap();
+        let session = sm.get_session(&id, false).await.unwrap();
+        assert_eq!(session.status, SessionStatus::Pending);
+        assert!(session.archived_at.is_none());
+        assert!(sm.list_sessions().await.unwrap().iter().any(|s| s.id == id));
+
+        sm.set_session_status(&id, SessionStatus::Completed)
+            .await
+            .unwrap();
+        let session = sm.get_session(&id, false).await.unwrap();
+        assert_eq!(session.status, SessionStatus::Completed);
+        let completed_archived_at = session.archived_at.expect("completed sessions are hidden");
+        assert!(!sm.list_sessions().await.unwrap().iter().any(|s| s.id == id));
+
+        sm.set_session_status(&id, SessionStatus::Rejected)
+            .await
+            .unwrap();
+        let session = sm.get_session(&id, false).await.unwrap();
+        assert_eq!(session.status, SessionStatus::Rejected);
+        assert_eq!(session.archived_at, Some(completed_archived_at));
+
+        sm.set_session_status(&id, SessionStatus::Active)
+            .await
+            .unwrap();
+        let session = sm.get_session(&id, false).await.unwrap();
+        assert_eq!(session.status, SessionStatus::Active);
+        assert!(session.archived_at.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_update_builder_status_sets_archived_at_fallback() {
+        let temp_dir = TempDir::new().unwrap();
+        let sm = SessionManager::new(temp_dir.path().to_path_buf());
+        let id = create_session_for_list(&sm, "/tmp/session-status", false).await;
+
+        sm.update(&id)
+            .status(SessionStatus::Superseded)
+            .apply()
+            .await
+            .unwrap();
+        let session = sm.get_session(&id, false).await.unwrap();
+        assert!(session.archived_at.is_some());
+
+        sm.update(&id)
+            .status(SessionStatus::Pending)
+            .apply()
+            .await
+            .unwrap();
+        let session = sm.get_session(&id, false).await.unwrap();
+        assert!(session.archived_at.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_update_builder_archived_at_syncs_status() {
+        let temp_dir = TempDir::new().unwrap();
+        let sm = SessionManager::new(temp_dir.path().to_path_buf());
+        let id = create_session_for_list(&sm, "/tmp/session-status", false).await;
+
+        sm.update(&id)
+            .archived_at(Some(chrono::Utc::now()))
+            .apply()
+            .await
+            .unwrap();
+        let session = sm.get_session(&id, false).await.unwrap();
+        assert_eq!(session.status, SessionStatus::Archived);
+
+        sm.update(&id).archived_at(None).apply().await.unwrap();
+        let session = sm.get_session(&id, false).await.unwrap();
+        assert_eq!(session.status, SessionStatus::Active);
     }
 
     #[tokio::test]
@@ -3880,6 +4071,7 @@ mod tests {
         let page = sm
             .list_sessions_paged(SessionListPageQuery {
                 filters: SessionListFilters {
+                    include_archived: false,
                     types: Some(&types),
                     keyword: Some("postgres"),
                     only_sessions_with_messages: true,
@@ -3922,6 +4114,7 @@ mod tests {
         let page = sm
             .list_sessions_paged(SessionListPageQuery {
                 filters: SessionListFilters {
+                    include_archived: false,
                     types: Some(&types),
                     keyword: Some("postgres sqlite"),
                     only_sessions_with_messages: true,
@@ -3957,6 +4150,7 @@ mod tests {
         let page = sm
             .list_sessions_paged(SessionListPageQuery {
                 filters: SessionListFilters {
+                    include_archived: false,
                     types: Some(&types),
                     keyword: Some("   "),
                     only_sessions_with_messages: true,
@@ -3996,6 +4190,7 @@ mod tests {
         let percent_page = sm
             .list_sessions_paged(SessionListPageQuery {
                 filters: SessionListFilters {
+                    include_archived: false,
                     types: Some(&types),
                     keyword: Some("%"),
                     only_sessions_with_messages: true,
@@ -4017,6 +4212,7 @@ mod tests {
         let underscore_page = sm
             .list_sessions_paged(SessionListPageQuery {
                 filters: SessionListFilters {
+                    include_archived: false,
                     types: Some(&types),
                     keyword: Some("_"),
                     only_sessions_with_messages: true,
@@ -4053,6 +4249,7 @@ mod tests {
 
         let types = [SessionType::User];
         let filters = SessionListFilters {
+            include_archived: false,
             types: Some(&types),
             working_dir: Some(Path::new("/tmp/session-list/a")),
             keyword: Some("postgres"),

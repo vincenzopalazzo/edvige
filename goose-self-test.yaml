@@ -17,6 +17,7 @@ activities:
   - Validate ACP thinking-effort discovery, forwarding, and provider switching
   - Validate GDK observability hook lifecycle events and payload opt-in
   - Test error boundaries including nested delegation prevention
+  - Test session lifecycle status (archive/unarchive, PR-based status inference)
   - Generate comprehensive test report
 
 parameters:
@@ -98,6 +99,12 @@ instructions: |
   - Validate security controls
   - Measure performance metrics
   - Test resource constraints
+  - Session lifecycle: run `goose session list`, archive a session with
+    `goose session archive --name <name>`, verify it disappears from the
+    default list and reappears with `goose session list --archived`, then
+    restore it with `goose session unarchive --name <name>`. If `gh` is
+    available and a session references a GitHub PR, also try
+    `goose session infer-status --name <name>` and check the reported status
 
   ### Phase 5: Report Generation
   Compile comprehensive test results:

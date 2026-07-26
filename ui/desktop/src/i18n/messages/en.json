@@ -3830,6 +3830,9 @@
   "sessions.acpBadge": {
     "defaultMessage": "ACP"
   },
+  "sessions.action.archive": {
+    "defaultMessage": "Archive session"
+  },
   "sessions.action.delete": {
     "defaultMessage": "Delete session"
   },
@@ -3940,6 +3943,12 @@
   },
   "sessions.shareNostr.title": {
     "defaultMessage": "Encrypted Nostr Share Link"
+  },
+  "sessions.toast.archiveFailed": {
+    "defaultMessage": "Failed to archive session \"{name}\": {error}"
+  },
+  "sessions.toast.archived": {
+    "defaultMessage": "Session \"{name}\" archived"
   },
   "sessions.toast.copied": {
     "defaultMessage": "Copied to clipboard"

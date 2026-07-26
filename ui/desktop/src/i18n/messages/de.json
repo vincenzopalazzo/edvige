@@ -3783,6 +3783,9 @@
   "sessions.acpBadge": {
     "defaultMessage": "ACP"
   },
+  "sessions.action.archive": {
+    "defaultMessage": "Sitzung archivieren"
+  },
   "sessions.action.delete": {
     "defaultMessage": "Sitzung löschen"
   },
@@ -3893,6 +3896,12 @@
   },
   "sessions.shareNostr.title": {
     "defaultMessage": "Verschlüsselter Nostr-Freigabelink"
+  },
+  "sessions.toast.archiveFailed": {
+    "defaultMessage": "Sitzung \"{name}\" konnte nicht archiviert werden: {error}"
+  },
+  "sessions.toast.archived": {
+    "defaultMessage": "Sitzung \"{name}\" archiviert"
   },
   "sessions.toast.copied": {
     "defaultMessage": "In die Zwischenablage kopiert"
