@@ -21,6 +21,7 @@ use tracing_subscriber::EnvFilter;
 const PROTOCOL_VERSION: u16 = 1;
 const CONFIG_VERSION: u32 = 1;
 const CONFIG_FILE: &str = "config.json";
+const INTRO_MESSAGE: &str = "Hey, I'm goose, your AI agent, reachable here over Sonar. This chat is your remote control channel: messages you send here run as prompts in goose and my replies come back here. To authorize this chat, generate a pairing code with `goose gateway pair sonar` (or Goose Desktop, Settings > Sonar remote control) and send it here.";
 const LEDGER_FILE: &str = "commands.json";
 const LOCK_FILE: &str = "bridge.lock";
 const DB_DIR: &str = "marmot";
@@ -71,6 +72,8 @@ struct CommandLedger {
     known_groups: BTreeSet<String>,
     completed: BTreeSet<String>,
     executing: BTreeMap<String, String>,
+    #[serde(default)]
+    introduced: BTreeSet<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -187,6 +190,7 @@ async fn serve(loaded: LoadedConfig, _lock: File) -> Result<()> {
     recover_interrupted_commands(&client, &ledger_path, &mut ledger).await;
     client.sync().await?;
     accept_pending_invites(&client, &loaded.controllers).await?;
+    introduce_controllers(&client, &loaded.controllers, &ledger_path, &mut ledger).await;
     let joined = checkpoint_new_groups(&client, &ledger_path, &mut ledger)?;
 
     let npub = client.identity().npub();
@@ -257,6 +261,41 @@ async fn accept_pending_invites(
         }
     }
     Ok(())
+}
+
+async fn introduce_controllers(
+    client: &SonarClient,
+    controllers: &HashSet<PublicKey>,
+    ledger_path: &Path,
+    ledger: &mut CommandLedger,
+) {
+    let mut changed = false;
+    for controller in controllers {
+        let key = controller.to_hex();
+        if ledger.introduced.contains(&key) {
+            continue;
+        }
+        match client.start_dm(*controller, "goose remote control").await {
+            Ok(group_id) => {
+                if let Err(error) = client.send_text(&group_id, INTRO_MESSAGE).await {
+                    eprintln!(
+                        "failed to send Sonar intro to {key}: {error}; will retry on next start"
+                    );
+                    continue;
+                }
+                ledger.introduced.insert(key);
+                changed = true;
+            }
+            Err(error) => {
+                eprintln!("failed to open Sonar DM with controller {key}: {error}; will retry on next start");
+            }
+        }
+    }
+    if changed {
+        if let Err(error) = write_private_json(ledger_path, ledger) {
+            eprintln!("failed to persist Sonar intro ledger: {error}");
+        }
+    }
 }
 
 fn is_controller(controllers: &HashSet<PublicKey>, sender: &PublicKey) -> bool {
