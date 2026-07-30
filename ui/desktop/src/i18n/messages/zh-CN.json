@@ -4570,5 +4570,29 @@
   },
   "userMessage.forkSessionTitle": {
     "defaultMessage": "用编辑过的消息创建新会话"
+  },
+  "worktreeCreator.branchName": {
+    "defaultMessage": "分支名称"
+  },
+  "worktreeCreator.branchNamePlaceholder": {
+    "defaultMessage": "my-feature-branch"
+  },
+  "worktreeCreator.cancel": {
+    "defaultMessage": "取消"
+  },
+  "worktreeCreator.create": {
+    "defaultMessage": "创建"
+  },
+  "worktreeCreator.createWorktree": {
+    "defaultMessage": "创建 git worktree"
+  },
+  "worktreeCreator.enterBranchName": {
+    "defaultMessage": "为新的 worktree 输入分支名称"
+  },
+  "worktreeCreator.failedToCreate": {
+    "defaultMessage": "创建 worktree 失败"
+  },
+  "worktreeCreator.invalidBranchName": {
+    "defaultMessage": "分支名称只能包含字母、数字、连字符、下划线、点和斜杠"
   }
 }

@@ -4570,5 +4570,29 @@
   },
   "userMessage.forkSessionTitle": {
     "defaultMessage": "Düzenlenen mesajla yeni bir oturum oluşturun"
+  },
+  "worktreeCreator.branchName": {
+    "defaultMessage": "Dal adı"
+  },
+  "worktreeCreator.branchNamePlaceholder": {
+    "defaultMessage": "my-feature-branch"
+  },
+  "worktreeCreator.cancel": {
+    "defaultMessage": "İptal"
+  },
+  "worktreeCreator.create": {
+    "defaultMessage": "Oluştur"
+  },
+  "worktreeCreator.createWorktree": {
+    "defaultMessage": "Git worktree oluştur"
+  },
+  "worktreeCreator.enterBranchName": {
+    "defaultMessage": "Yeni worktree için bir dal adı girin"
+  },
+  "worktreeCreator.failedToCreate": {
+    "defaultMessage": "Worktree oluşturulamadı"
+  },
+  "worktreeCreator.invalidBranchName": {
+    "defaultMessage": "Dal adı yalnızca harf, rakam, tire, alt çizgi, nokta ve eğik çizgi içerebilir"
   }
 }

@@ -4570,5 +4570,29 @@
   },
   "userMessage.forkSessionTitle": {
     "defaultMessage": "以編輯後的訊息建立新的工作階段"
+  },
+  "worktreeCreator.branchName": {
+    "defaultMessage": "分支名稱"
+  },
+  "worktreeCreator.branchNamePlaceholder": {
+    "defaultMessage": "my-feature-branch"
+  },
+  "worktreeCreator.cancel": {
+    "defaultMessage": "取消"
+  },
+  "worktreeCreator.create": {
+    "defaultMessage": "建立"
+  },
+  "worktreeCreator.createWorktree": {
+    "defaultMessage": "建立 git worktree"
+  },
+  "worktreeCreator.enterBranchName": {
+    "defaultMessage": "為新的 worktree 輸入分支名稱"
+  },
+  "worktreeCreator.failedToCreate": {
+    "defaultMessage": "建立 worktree 失敗"
+  },
+  "worktreeCreator.invalidBranchName": {
+    "defaultMessage": "分支名稱只能包含字母、數字、連字號、底線、點和斜線"
   }
 }

@@ -4570,5 +4570,29 @@
   },
   "userMessage.forkSessionTitle": {
     "defaultMessage": "편집한 메시지로 새 세션 만들기"
+  },
+  "worktreeCreator.branchName": {
+    "defaultMessage": "브랜치 이름"
+  },
+  "worktreeCreator.branchNamePlaceholder": {
+    "defaultMessage": "my-feature-branch"
+  },
+  "worktreeCreator.cancel": {
+    "defaultMessage": "취소"
+  },
+  "worktreeCreator.create": {
+    "defaultMessage": "생성"
+  },
+  "worktreeCreator.createWorktree": {
+    "defaultMessage": "git worktree 생성"
+  },
+  "worktreeCreator.enterBranchName": {
+    "defaultMessage": "새 worktree의 브랜치 이름을 입력하세요"
+  },
+  "worktreeCreator.failedToCreate": {
+    "defaultMessage": "worktree 생성에 실패했습니다"
+  },
+  "worktreeCreator.invalidBranchName": {
+    "defaultMessage": "브랜치 이름은 문자, 숫자, 하이픈, 밑줄, 마침표, 슬래시만 포함할 수 있습니다"
   }
 }

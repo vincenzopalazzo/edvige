@@ -4570,5 +4570,29 @@
   },
   "userMessage.forkSessionTitle": {
     "defaultMessage": "編集したメッセージで新しいセッションを作成"
+  },
+  "worktreeCreator.branchName": {
+    "defaultMessage": "ブランチ名"
+  },
+  "worktreeCreator.branchNamePlaceholder": {
+    "defaultMessage": "my-feature-branch"
+  },
+  "worktreeCreator.cancel": {
+    "defaultMessage": "キャンセル"
+  },
+  "worktreeCreator.create": {
+    "defaultMessage": "作成"
+  },
+  "worktreeCreator.createWorktree": {
+    "defaultMessage": "git worktree を作成"
+  },
+  "worktreeCreator.enterBranchName": {
+    "defaultMessage": "新しい worktree のブランチ名を入力してください"
+  },
+  "worktreeCreator.failedToCreate": {
+    "defaultMessage": "worktree の作成に失敗しました"
+  },
+  "worktreeCreator.invalidBranchName": {
+    "defaultMessage": "ブランチ名には英字、数字、ハイフン、アンダースコア、ドット、スラッシュのみ使用できます"
   }
 }

@@ -4570,5 +4570,29 @@
   },
   "userMessage.forkSessionTitle": {
     "defaultMessage": "Создать новый сеанс с измененным сообщением"
+  },
+  "worktreeCreator.branchName": {
+    "defaultMessage": "Имя ветки"
+  },
+  "worktreeCreator.branchNamePlaceholder": {
+    "defaultMessage": "my-feature-branch"
+  },
+  "worktreeCreator.cancel": {
+    "defaultMessage": "Отмена"
+  },
+  "worktreeCreator.create": {
+    "defaultMessage": "Создать"
+  },
+  "worktreeCreator.createWorktree": {
+    "defaultMessage": "Создать git worktree"
+  },
+  "worktreeCreator.enterBranchName": {
+    "defaultMessage": "Введите имя ветки для нового worktree"
+  },
+  "worktreeCreator.failedToCreate": {
+    "defaultMessage": "Не удалось создать worktree"
+  },
+  "worktreeCreator.invalidBranchName": {
+    "defaultMessage": "Имя ветки может содержать только буквы, цифры, дефисы, подчёркивания, точки и косые черты"
   }
 }

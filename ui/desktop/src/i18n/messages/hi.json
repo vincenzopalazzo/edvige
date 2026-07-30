@@ -4570,5 +4570,29 @@
   },
   "userMessage.forkSessionTitle": {
     "defaultMessage": "संपादित संदेश के साथ एक नया सत्र बनाएं"
+  },
+  "worktreeCreator.branchName": {
+    "defaultMessage": "ब्रांच नाम"
+  },
+  "worktreeCreator.branchNamePlaceholder": {
+    "defaultMessage": "my-feature-branch"
+  },
+  "worktreeCreator.cancel": {
+    "defaultMessage": "रद्द करें"
+  },
+  "worktreeCreator.create": {
+    "defaultMessage": "बनाएं"
+  },
+  "worktreeCreator.createWorktree": {
+    "defaultMessage": "गिट वर्कट्री बनाएं"
+  },
+  "worktreeCreator.enterBranchName": {
+    "defaultMessage": "नए वर्कट्री के लिए एक ब्रांच नाम दर्ज करें"
+  },
+  "worktreeCreator.failedToCreate": {
+    "defaultMessage": "वर्कट्री बनाने में विफल"
+  },
+  "worktreeCreator.invalidBranchName": {
+    "defaultMessage": "ब्रांच नाम में केवल अक्षर, संख्याएं, हाइफ़न, अंडरस्कोर, डॉट और स्लैश हो सकते हैं"
   }
 }

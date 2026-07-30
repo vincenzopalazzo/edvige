@@ -4570,5 +4570,29 @@
   },
   "userMessage.forkSessionTitle": {
     "defaultMessage": "Cipta sesi baharu dengan mesej yang disunting"
+  },
+  "worktreeCreator.branchName": {
+    "defaultMessage": "Nama cawangan"
+  },
+  "worktreeCreator.branchNamePlaceholder": {
+    "defaultMessage": "my-feature-branch"
+  },
+  "worktreeCreator.cancel": {
+    "defaultMessage": "Batal"
+  },
+  "worktreeCreator.create": {
+    "defaultMessage": "Cipta"
+  },
+  "worktreeCreator.createWorktree": {
+    "defaultMessage": "Cipta git worktree"
+  },
+  "worktreeCreator.enterBranchName": {
+    "defaultMessage": "Masukkan nama cawangan untuk worktree baharu"
+  },
+  "worktreeCreator.failedToCreate": {
+    "defaultMessage": "Gagal mencipta worktree"
+  },
+  "worktreeCreator.invalidBranchName": {
+    "defaultMessage": "Nama cawangan hanya boleh mengandungi huruf, nombor, tanda sempang, garis bawah, titik dan garis miring"
   }
 }

@@ -4570,5 +4570,29 @@
   },
   "userMessage.forkSessionTitle": {
     "defaultMessage": "Tạo một phiên làm việc mới với tin nhắn đã chỉnh sửa"
+  },
+  "worktreeCreator.branchName": {
+    "defaultMessage": "Tên nhánh"
+  },
+  "worktreeCreator.branchNamePlaceholder": {
+    "defaultMessage": "my-feature-branch"
+  },
+  "worktreeCreator.cancel": {
+    "defaultMessage": "Hủy"
+  },
+  "worktreeCreator.create": {
+    "defaultMessage": "Tạo"
+  },
+  "worktreeCreator.createWorktree": {
+    "defaultMessage": "Tạo git worktree"
+  },
+  "worktreeCreator.enterBranchName": {
+    "defaultMessage": "Nhập tên nhánh cho worktree mới"
+  },
+  "worktreeCreator.failedToCreate": {
+    "defaultMessage": "Không thể tạo worktree"
+  },
+  "worktreeCreator.invalidBranchName": {
+    "defaultMessage": "Tên nhánh chỉ được chứa chữ cái, số, dấu gạch nối, dấu gạch dưới, dấu chấm và dấu gạch chéo"
   }
 }

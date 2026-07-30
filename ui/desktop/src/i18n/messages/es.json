@@ -4570,5 +4570,29 @@
   },
   "userMessage.forkSessionTitle": {
     "defaultMessage": "Crear una nueva sesión con el mensaje editado"
+  },
+  "worktreeCreator.branchName": {
+    "defaultMessage": "Nombre de la rama"
+  },
+  "worktreeCreator.branchNamePlaceholder": {
+    "defaultMessage": "my-feature-branch"
+  },
+  "worktreeCreator.cancel": {
+    "defaultMessage": "Cancelar"
+  },
+  "worktreeCreator.create": {
+    "defaultMessage": "Crear"
+  },
+  "worktreeCreator.createWorktree": {
+    "defaultMessage": "Crear un git worktree"
+  },
+  "worktreeCreator.enterBranchName": {
+    "defaultMessage": "Introduce un nombre de rama para el nuevo worktree"
+  },
+  "worktreeCreator.failedToCreate": {
+    "defaultMessage": "No se pudo crear el worktree"
+  },
+  "worktreeCreator.invalidBranchName": {
+    "defaultMessage": "El nombre de la rama solo puede contener letras, números, guiones, guiones bajos, puntos y barras"
   }
 }
