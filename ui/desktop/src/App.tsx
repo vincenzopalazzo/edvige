@@ -94,6 +94,13 @@ export const PairRouteWrapper = ({
   const isCreatingSessionRef = useRef(false);
   const navigate = useNavigate();
 
+  useEffect(() => {
+    unmountedRef.current = false;
+    return () => {
+      unmountedRef.current = true;
+    };
+  }, []);
+
   const resumeSessionId = searchParams.get('resumeSessionId') ?? undefined;
   const recipeDeeplinkFromConfig = window.appConfig?.get('recipeDeeplink') as string | undefined;
   const recipeIdFromConfig = window.appConfig?.get('recipeId') as string | undefined;
