@@ -1437,6 +1437,36 @@
   "huggingFaceSignInPrompt.title": {
     "defaultMessage": "Hugging Face"
   },
+  "ideButton.chooseDefault": {
+    "defaultMessage": "Choose default IDE"
+  },
+  "ideButton.defaultLabel": {
+    "defaultMessage": "default"
+  },
+  "ideButton.fallbackName": {
+    "defaultMessage": "IDE"
+  },
+  "ideButton.openFailed": {
+    "defaultMessage": "Failed to open project in IDE"
+  },
+  "ideButton.openIn": {
+    "defaultMessage": "Open in {name}"
+  },
+  "ideButton.saveFailed": {
+    "defaultMessage": "Failed to save default IDE"
+  },
+  "ideSettingsSection.description": {
+    "defaultMessage": "Choose the editor Goose uses when opening your project"
+  },
+  "ideSettingsSection.notDetected": {
+    "defaultMessage": "not detected"
+  },
+  "ideSettingsSection.saveFailed": {
+    "defaultMessage": "Failed to save default IDE"
+  },
+  "ideSettingsSection.title": {
+    "defaultMessage": "Default IDE"
+  },
   "imagePreview.altText": {
     "defaultMessage": "goose-Bild"
   },

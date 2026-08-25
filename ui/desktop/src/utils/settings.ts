@@ -63,6 +63,7 @@ export interface Settings {
   customUpdateOwner?: string | null;
   customUpdateRepo?: string | null;
   customUpdateBundleName?: string | null;
+  GOOSE_DEFAULT_IDE: string;
 }
 
 export type SettingKey = keyof Settings;
@@ -105,6 +106,7 @@ export const defaultSettings: Settings = {
   showPricing: true,
   seenAnnouncementIds: [],
   recentModels: [],
+  GOOSE_DEFAULT_IDE: '',
 };
 
 export function getKeyboardShortcuts(settings: Settings): KeyboardShortcuts {

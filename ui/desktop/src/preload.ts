@@ -6,6 +6,7 @@ import { defaultSettings } from './utils/settings';
 import type { OpenExternalUrlResult } from './utils/urlSecurity';
 import { isCatppuccinAccent, isThemeId } from './theme/types';
 
+import type { DetectedIde, IdeId, OpenTarget } from './types/ide';
 // Mapping from settings keys to their old localStorage keys for lazy migration
 const localStorageKeyMap: Partial<Record<SettingKey, string>> = {
   theme: 'theme',
@@ -186,6 +187,8 @@ type ElectronAPI = {
   addRecentDir: (dir: string) => Promise<boolean>;
   listRecentDirs: () => Promise<string[]>;
   listGitWorktreeDirs: (dir: string) => Promise<string[]>;
+  listDetectedIdes: () => Promise<DetectedIde[]>;
+  openInIde: (ideId: IdeId, target: OpenTarget) => Promise<void>;
   getGitBranchInfo: (dir: string) => Promise<{ branch: string } | null>;
   listGitBranches: (dir: string) => Promise<string[]>;
   switchGitBranch: (dir: string, branch: string) => Promise<{ success: boolean; error?: string }>;
@@ -349,6 +352,8 @@ const electronAPI: ElectronAPI = {
   addRecentDir: (dir: string) => ipcRenderer.invoke('add-recent-dir', dir),
   listRecentDirs: () => ipcRenderer.invoke('list-recent-dirs'),
   listGitWorktreeDirs: (dir: string) => ipcRenderer.invoke('list-git-worktree-dirs', dir),
+  listDetectedIdes: () => ipcRenderer.invoke('ide-list-detected'),
+  openInIde: (ideId: IdeId, target: OpenTarget) => ipcRenderer.invoke('ide-open', ideId, target),
   getGitBranchInfo: (dir: string) => ipcRenderer.invoke('get-git-branch-info', dir),
   listGitBranches: (dir: string) => ipcRenderer.invoke('list-git-branches', dir),
   switchGitBranch: (dir: string, branch: string) =>
