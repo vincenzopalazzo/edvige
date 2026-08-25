@@ -55,6 +55,7 @@ export interface Settings {
   showPricing: boolean;
   seenAnnouncementIds: string[];
   recentModels: RecentModel[];
+  GOOSE_DEFAULT_IDE: string;
 }
 
 export type SettingKey = keyof Settings;
@@ -96,6 +97,7 @@ export const defaultSettings: Settings = {
   showPricing: true,
   seenAnnouncementIds: [],
   recentModels: [],
+  GOOSE_DEFAULT_IDE: '',
 };
 
 export function getKeyboardShortcuts(settings: Settings): KeyboardShortcuts {

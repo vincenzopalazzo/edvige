@@ -10,6 +10,7 @@ import { ChatState } from '../types/chatState';
 import debounce from 'lodash/debounce';
 import { LocalMessageStorage } from '../utils/localMessageStorage';
 import { DirSwitcher } from './bottom_menu/DirSwitcher';
+import { IdeButton } from './IdeButton';
 import { GitBranchIndicator } from './GitBranchIndicator';
 import ModelsBottomBar from './settings/models/bottom_bar/ModelsBottomBar';
 import { BottomMenuExtensionSelection } from './bottom_menu/BottomMenuExtensionSelection';
@@ -1754,6 +1755,7 @@ export default function ChatInput({
               nextChatExtensionDraft={nextChatExtensionDraft}
               onNextChatExtensionDraftChange={onNextChatExtensionDraftChange}
             />
+            <IdeButton workingDir={currentWorkingDir} />
 
             {/* Right: diagnostics */}
             {sessionId && (
