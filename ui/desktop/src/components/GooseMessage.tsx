@@ -9,6 +9,8 @@ import {
   getTextAndImageContent,
   getThinkingContent,
   getToolRequests,
+  getToolResponses,
+  reasoningConsumedOutputBudget,
   getToolConfirmationContent,
   getElicitationContent,
   type Message,
@@ -77,22 +79,19 @@ function GooseMessage({
     shouldThrottleStreamingText,
     streamingRenderCooldownMs
   );
-  const reasoningConsumedOutputBudget =
-    outputTokenLimitReached &&
-    !isOutputTokenLimitFallback &&
-    Boolean(thinkingContent) &&
-    !displayText.trim() &&
-    imagePaths.length === 0 &&
-    toolRequests.length === 0;
   const messageIndex = messages.findIndex((msg) => msg.id === message.id);
+  const reasoningConsumedBudget = reasoningConsumedOutputBudget(
+    messages,
+    messageIndex >= 0 ? messageIndex : messages.length - 1
+  );
   const toolConfirmationContent = getToolConfirmationContent(message);
   const elicitationContent = getElicitationContent(message);
   const hasToolConfirmation = toolConfirmationContent !== undefined;
   const hasElicitation = elicitationContent !== undefined;
-  const outputTokenLimitNotice = isOutputTokenLimitFallback
-    ? "Response reached the model's output-token limit before returning content."
-    : reasoningConsumedOutputBudget
-      ? 'Reasoning consumed the output-token budget before any visible content was produced. Raise GOOSE_MAX_TOKENS or lower GOOSE_THINKING_EFFORT.'
+  const outputTokenLimitNotice = reasoningConsumedBudget
+    ? 'Reasoning consumed the output-token budget before any visible content was produced. Raise GOOSE_MAX_TOKENS or lower GOOSE_THINKING_EFFORT.'
+    : isOutputTokenLimitFallback
+      ? "Response reached the model's output-token limit before returning content."
       : "Response reached the model's output-token limit and may be incomplete.";
   const elicitationData =
     elicitationContent?.data.actionType === 'elicitation'
