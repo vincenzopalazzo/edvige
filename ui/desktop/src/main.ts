@@ -42,6 +42,7 @@ import { formatAppName, errorMessage, formatErrorForLogging } from './utils/conv
 import { isRetiredGooseChatApp } from './utils/retiredApps';
 import type { Settings, SettingKey } from './utils/settings';
 import { defaultSettings, getKeyboardShortcuts } from './utils/settings';
+import { isCatppuccinAccent, isThemeId } from './theme/types';
 import * as crypto from 'crypto';
 import * as yaml from 'yaml';
 import windowStateKeeper from 'electron-window-state';
@@ -1982,6 +1983,7 @@ const validSettingKeys: Set<string> = new Set([
   'keyboardShortcuts',
   'theme',
   'useSystemTheme',
+  'catppuccinAccent',
   'language',
   'responseStyle',
   'showPricing',
@@ -2000,6 +2002,16 @@ ipcMain.handle('set-setting', (_event, key: SettingKey, value: unknown) => {
 
   if (key === 'language' && !isValidLanguageSetting(value)) {
     console.error(`Invalid language setting rejected: ${String(value)}`);
+    return;
+  }
+
+  if (key === 'theme' && !isThemeId(value)) {
+    console.error(`Invalid theme setting rejected: ${String(value)}`);
+    return;
+  }
+
+  if (key === 'catppuccinAccent' && !isCatppuccinAccent(value)) {
+    console.error(`Invalid Catppuccin accent rejected: ${String(value)}`);
     return;
   }
 

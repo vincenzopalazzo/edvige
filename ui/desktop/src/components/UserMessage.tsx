@@ -323,7 +323,7 @@ function UserMessage({ message, onMessageUpdate }: UserMessageProps) {
             <div className="flex-col max-w-[85%] w-fit">
               <div className="flex flex-col group">
                 {textContent.trim() && (
-                  <div className="user-message-bubble flex bg-text-primary text-background-primary rounded-xl py-2.5 px-4">
+                  <div className="user-message-bubble flex rounded-xl py-2.5 px-4">
                     <div ref={contentRef}>
                       <MarkdownContent
                         content={textContent}
