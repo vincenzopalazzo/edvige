@@ -12,6 +12,13 @@ if [ -f .env ]; then
   export $(grep -v '^#' .env | xargs)
 fi
 
+# Fork CI has no provider secrets: fall back to a placeholder key so the
+# proxy-based test can classify requests, and skip live-provider tests.
+if [ -z "$ANTHROPIC_API_KEY" ]; then
+  export ANTHROPIC_API_KEY="ci-placeholder-key"
+  SKIP_LIVE_TESTS=1
+fi
+
 if [ -z "$SKIP_BUILD" ]; then
   echo "Building goose..."
   cargo build --bin goose
@@ -122,6 +129,10 @@ echo "---------------------------------------------------"
 echo "TEST 1: Manual Compaction via trigger prompt"
 echo "---------------------------------------------------"
 
+if [ -n "$SKIP_LIVE_TESTS" ]; then
+  echo "SKIPPED: requires ANTHROPIC_API_KEY for live provider calls"
+  RESULTS+=("Manual Compaction (skipped: no API key)")
+else
 TESTDIR=$(mktemp -d)
 echo "hello world" > "$TESTDIR/hello.txt"
 echo "Test directory: $TESTDIR"
@@ -171,6 +182,7 @@ else
   rm -f "$OUTPUT"
   rm -rf "$TESTDIR"
 fi
+fi
 
 echo ""
 echo ""
@@ -182,6 +194,10 @@ echo "---------------------------------------------------"
 echo "TEST 2: Auto Compaction via threshold (0.005)"
 echo "---------------------------------------------------"
 
+if [ -n "$SKIP_LIVE_TESTS" ]; then
+  echo "SKIPPED: requires ANTHROPIC_API_KEY for live provider calls"
+  RESULTS+=("Auto Compaction (skipped: no API key)")
+else
 TESTDIR=$(mktemp -d)
 echo "test content" > "$TESTDIR/test.txt"
 echo "Test directory: $TESTDIR"
@@ -233,11 +249,12 @@ else
   fi
 fi
 
-# Unset the env variable
-unset GOOSE_AUTO_COMPACT_THRESHOLD
-
 rm -f "$OUTPUT"
 rm -rf "$TESTDIR"
+fi
+
+# Unset the env variable
+unset GOOSE_AUTO_COMPACT_THRESHOLD
 
 echo ""
 echo ""
@@ -273,6 +290,9 @@ if ! (cd "$PROXY_DIR" && uv sync 2>&1 | tee "$PROXY_SETUP_LOG"); then
 else
   echo "✓ Dependencies installed"
 
+  PROXY_EXTRA_ARGS=""
+  [ -n "$SKIP_LIVE_TESTS" ] && PROXY_EXTRA_ARGS="--simulate-success"
+
   # Start the error proxy in context-length error mode.
   #
   # Inject exactly ONE error. The proxy only injects into completion requests
@@ -285,7 +305,7 @@ else
   # is not a scenario worth asserting; a higher count just consumes the
   # summarizer's own calls and prevents the summary this test exists to check.
   echo "Starting error proxy on port $PROXY_PORT with context-length error mode..."
-  (cd "$PROXY_DIR" && UV_INDEX_URL="https://pypi.org/simple" uv run proxy.py --port "$PROXY_PORT" --mode "c 1" --no-stdin > "$PROXY_LOG" 2>&1) &
+  (cd "$PROXY_DIR" && UV_INDEX_URL="https://pypi.org/simple" uv run proxy.py --port "$PROXY_PORT" --mode "c 1" --no-stdin $PROXY_EXTRA_ARGS > "$PROXY_LOG" 2>&1) &
   PROXY_PID=$!
 
   # Wait for proxy to be ready (check if port is listening)

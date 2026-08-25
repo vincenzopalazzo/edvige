@@ -155,7 +155,7 @@ function getProviders(): ProviderConfig[] {
       provider: 'claude-code',
       models: ['default'],
       agentic: true,
-      available: () => hasCmd('claude'),
+      available: () => hasCmd('claude') && hasEnv('ANTHROPIC_API_KEY'),
     },
     {
       provider: 'cursor-agent',

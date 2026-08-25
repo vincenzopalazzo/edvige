@@ -25,6 +25,7 @@ To use with Goose, set the provider host environment variables:
 """
 
 import asyncio
+import json
 import logging
 import os
 import random
@@ -298,6 +299,7 @@ class ErrorProxy:
         self.error_count = 0  # Remaining errors to inject (0 = unlimited/percentage mode)
         self.error_percentage = 0.0  # Percentage of requests to error (0.0 = count mode)
         self.request_count = 0
+        self.simulate_success = False
         self.session: Optional[ClientSession] = None
         self.lock = threading.Lock()
         
@@ -507,6 +509,47 @@ class ErrorProxy:
         else:
             return f"{symbol} {mode_name}"
 
+    async def canned_anthropic_response(self, request: Request) -> Response:
+        """Serve a canned successful Anthropic response (offline mode)."""
+        raw = await request.read()
+        try:
+            payload = json.loads(raw) if raw else {}
+        except json.JSONDecodeError:
+            payload = {}
+        model = payload.get('model', 'claude-haiku-4-5')
+        text = 'Summary: the user greeted the assistant; the conversation was compacted.'
+        if payload.get('stream'):
+            events = [
+                ('message_start', {'type': 'message_start', 'message': {
+                    'id': 'msg_simulated', 'type': 'message', 'role': 'assistant',
+                    'model': model, 'content': [], 'stop_reason': None,
+                    'stop_sequence': None,
+                    'usage': {'input_tokens': 8, 'output_tokens': 1}}}),
+                ('content_block_start', {'type': 'content_block_start', 'index': 0,
+                    'content_block': {'type': 'text', 'text': ''}}),
+                ('content_block_delta', {'type': 'content_block_delta', 'index': 0,
+                    'delta': {'type': 'text_delta', 'text': text}}),
+                ('content_block_stop', {'type': 'content_block_stop', 'index': 0}),
+                ('message_delta', {'type': 'message_delta',
+                    'delta': {'stop_reason': 'end_turn', 'stop_sequence': None},
+                    'usage': {'output_tokens': 12}}),
+                ('message_stop', {'type': 'message_stop'}),
+            ]
+            response = StreamResponse(
+                headers={'content-type': 'text/event-stream', 'cache-control': 'no-cache'})
+            await response.prepare(request)
+            for name, data in events:
+                nl = chr(10)
+                await response.write(('event: ' + name + nl + 'data: ' + json.dumps(data) + nl + nl).encode())
+            await response.write_eof()
+            return response
+        return web.json_response({
+            'id': 'msg_simulated', 'type': 'message', 'role': 'assistant',
+            'model': model, 'content': [{'type': 'text', 'text': text}],
+            'stop_reason': 'end_turn', 'stop_sequence': None,
+            'usage': {'input_tokens': 8, 'output_tokens': 12},
+        })
+
     async def handle_request(self, request: Request) -> Response:
         """
         Handle an incoming HTTP request.
@@ -550,6 +593,12 @@ class ErrorProxy:
                     status=error_config['status']
                 )
         
+        # Offline mode: serve canned success responses instead of hitting real APIs
+        if (self.simulate_success and request.method == 'POST'
+                and provider == 'anthropic' and request.path.endswith('/v1/messages')):
+            logger.info('🎬 Serving canned success response (simulate-success mode)')
+            return await self.canned_anthropic_response(request)
+
         # Forward the request to the actual provider
         target_url = self.get_target_url(request, provider)
         
@@ -810,6 +859,11 @@ def main():
         action='store_true',
         help='Disable stdin reader (for background/automated mode)'
     )
+    parser.add_argument(
+        '--simulate-success',
+        action='store_true',
+        help='Serve canned success responses instead of forwarding to real providers (offline mode)'
+    )
 
     args = parser.parse_args()
     
@@ -829,6 +883,7 @@ def main():
     
     # Create proxy instance
     proxy = ErrorProxy()
+    proxy.simulate_success = args.simulate_success
 
     # Set initial error mode from command-line arguments
     if args.mode:
