@@ -37,6 +37,8 @@ interface GooseMessageProps {
   toolStates: readonly ToolRenderState[];
   toolNotifications: readonly (NotificationEvent[] | undefined)[];
   toolConfirmationShownInline: boolean;
+  messages: Message[];
+  messageIndex: number;
   append: (value: string) => void;
   isStreaming: boolean;
   submitElicitationResponse?: (
@@ -52,6 +54,8 @@ function GooseMessage({
   toolStates,
   toolNotifications,
   toolConfirmationShownInline,
+  messages,
+  messageIndex,
   append,
   isStreaming,
   submitElicitationResponse,
@@ -79,11 +83,7 @@ function GooseMessage({
     shouldThrottleStreamingText,
     streamingRenderCooldownMs
   );
-  const messageIndex = messages.findIndex((msg) => msg.id === message.id);
-  const reasoningConsumedBudget = reasoningConsumedOutputBudget(
-    messages,
-    messageIndex >= 0 ? messageIndex : messages.length - 1
-  );
+  const reasoningConsumedBudget = reasoningConsumedOutputBudget(messages, messageIndex);
   const toolConfirmationContent = getToolConfirmationContent(message);
   const elicitationContent = getElicitationContent(message);
   const hasToolConfirmation = toolConfirmationContent !== undefined;
