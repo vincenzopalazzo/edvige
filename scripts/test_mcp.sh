@@ -16,6 +16,11 @@ GOOSE_BIN="$SCRIPT_DIR/target/debug/goose"
 TEST_PROVIDER=${GOOSE_PROVIDER:-anthropic}
 TEST_MODEL=${GOOSE_MODEL:-claude-haiku-4-5-20251001}
 
+if [ "$TEST_PROVIDER" = "anthropic" ] && [ -z "$ANTHROPIC_API_KEY" ]; then
+  echo "SKIPPED: FastMCP stderr test requires ANTHROPIC_API_KEY for live provider calls"
+  exit 0
+fi
+
 RESULTS=()
 
 TESTDIR=$(mktemp -d)

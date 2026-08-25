@@ -24,6 +24,11 @@ export PATH="$SCRIPT_DIR/target/debug:$PATH"
 export GOOSE_PROVIDER="${GOOSE_PROVIDER:-anthropic}"
 export GOOSE_MODEL="${GOOSE_MODEL:-claude-haiku-4-5}"
 
+if [ "$GOOSE_PROVIDER" = "anthropic" ] && [ -z "$ANTHROPIC_API_KEY" ]; then
+  echo "SKIPPED: subrecipe tests require ANTHROPIC_API_KEY for live provider calls"
+  exit 0
+fi
+
 echo "Using provider: $GOOSE_PROVIDER"
 echo "Using model: $GOOSE_MODEL"
 echo ""
