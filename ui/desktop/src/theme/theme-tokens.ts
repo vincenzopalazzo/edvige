@@ -18,6 +18,7 @@ import type {
   McpUiStyleVariableKey,
   McpUiStyles,
 } from '@modelcontextprotocol/ext-apps/app-bridge';
+import { getChatChromeTokens } from './chat-chrome';
 import { buildCatppuccinColorTokens } from './catppuccin';
 import {
   DEFAULT_CATPPUCCIN_ACCENT,
@@ -437,8 +438,12 @@ export function applyThemeTokens(
 ): void {
   const resolved = theme ?? getResolvedTheme();
   const tokens = getThemeTokens(resolved, accent);
+  const chrome = getChatChromeTokens(resolved, accent);
   const root = document.documentElement;
   for (const [key, value] of Object.entries(tokens)) {
+    root.style.setProperty(key, value);
+  }
+  for (const [key, value] of Object.entries(chrome)) {
     root.style.setProperty(key, value);
   }
 }
