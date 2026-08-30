@@ -11,7 +11,7 @@ use crate::session::session_naming::{
     generate_session_name, MSG_COUNT_FOR_SESSION_NAME_GENERATION,
 };
 use anyhow::Result;
-use chrono::{DateTime, Datelike, NaiveDate, TimeZone, Utc};
+use chrono::{DateTime, Datelike, Local, NaiveDate, TimeZone, Utc};
 use goose_providers::conversation::token_usage::Usage;
 use goose_providers::model::ModelConfig;
 use rmcp::model::Role;
@@ -844,16 +844,17 @@ fn session_display_name(name: String, description: String) -> String {
     }
 }
 
-fn model_id_from_config_json(json: Option<&str>) -> Option<String> {
-    let json = json?;
-    serde_json::from_str::<serde_json::Value>(json)
-        .ok()
-        .and_then(|value| {
-            value
-                .get("model_name")
-                .and_then(|model| model.as_str())
-                .map(ToString::to_string)
-        })
+fn local_year_start(year: i32) -> Result<DateTime<Utc>> {
+    NaiveDate::from_ymd_opt(year, 1, 1)
+        .and_then(|date| date.and_hms_opt(0, 0, 0))
+        .and_then(|naive| Local.from_local_datetime(&naive).single())
+        .map(|local| local.with_timezone(&Utc))
+        .ok_or_else(|| anyhow::anyhow!("invalid activity year"))
+}
+
+fn model_id_from_config_json(provider_name: Option<&str>, json: Option<&str>) -> Option<String> {
+    deserialize_session_model_config(provider_name, json?)
+        .map(|config| config.model_name)
         .filter(|model_id| !model_id.is_empty())
 }
 
@@ -877,8 +878,12 @@ fn build_session_activity(year: i32, rows: Vec<SessionActivityRow>) -> SessionAc
         let Some(activity_at) = message_timestamp_to_datetime(activity_at) else {
             continue;
         };
-        let date = activity_at.format("%Y-%m-%d").to_string();
-        let model_id = model_id_from_config_json(model_config_json.as_deref());
+        let date = activity_at
+            .with_timezone(&Local)
+            .format("%Y-%m-%d")
+            .to_string();
+        let model_id =
+            model_id_from_config_json(provider_name.as_deref(), model_config_json.as_deref());
         let provider_id = provider_name.filter(|value| !value.is_empty());
         let session = SessionActivitySession {
             id,
@@ -2521,14 +2526,8 @@ impl SessionStorage {
             });
         }
 
-        let start = NaiveDate::from_ymd_opt(year, 1, 1)
-            .and_then(|date| date.and_hms_opt(0, 0, 0))
-            .map(|naive| Utc.from_utc_datetime(&naive))
-            .ok_or_else(|| anyhow::anyhow!("invalid activity year"))?;
-        let end = NaiveDate::from_ymd_opt(year + 1, 1, 1)
-            .and_then(|date| date.and_hms_opt(0, 0, 0))
-            .map(|naive| Utc.from_utc_datetime(&naive))
-            .ok_or_else(|| anyhow::anyhow!("invalid activity year"))?;
+        let start = local_year_start(year)?;
+        let end = local_year_start(year + 1)?;
 
         let placeholders: String = types.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
         let activity_at_sql = format!(
@@ -5250,7 +5249,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_get_activity_groups_sessions_by_local_utc_day_and_model() {
+    async fn test_get_activity_groups_sessions_by_local_day_and_model() {
         let temp_dir = TempDir::new().unwrap();
         let sm = SessionManager::new(temp_dir.path().to_path_buf());
 
@@ -5331,8 +5330,16 @@ mod tests {
             .unwrap();
 
         let pool = sm.storage().pool().await.unwrap();
-        let jan_day = Utc.with_ymd_and_hms(2024, 1, 15, 12, 0, 0).unwrap();
-        let feb_day = Utc.with_ymd_and_hms(2024, 2, 2, 8, 0, 0).unwrap();
+        let jan_day = Local
+            .with_ymd_and_hms(2024, 1, 15, 12, 0, 0)
+            .single()
+            .unwrap()
+            .with_timezone(&Utc);
+        let feb_day = Local
+            .with_ymd_and_hms(2024, 2, 2, 8, 0, 0)
+            .single()
+            .unwrap()
+            .with_timezone(&Utc);
         sqlx::query("UPDATE messages SET created_timestamp = ? WHERE session_id = ?")
             .bind(jan_day.timestamp())
             .bind(&first.id)
@@ -5392,9 +5399,11 @@ mod tests {
                     "Later".into(),
                     String::new(),
                     Some("openai".into()),
-                    Some(r#"{"model_name":"gpt-4o"}"#.into()),
+                    Some(r#"{"model_name":"gpt-4o","toolshim":false}"#.into()),
                     10,
-                    Utc.with_ymd_and_hms(2024, 3, 2, 0, 0, 0)
+                    Local
+                        .with_ymd_and_hms(2024, 3, 2, 12, 0, 0)
+                        .single()
                         .unwrap()
                         .timestamp(),
                 ),
@@ -5403,9 +5412,11 @@ mod tests {
                     String::new(),
                     "Earlier".into(),
                     Some("anthropic".into()),
-                    Some(r#"{"model_name":"claude"}"#.into()),
+                    Some(r#"{"model_name":"claude","toolshim":false}"#.into()),
                     50,
-                    Utc.with_ymd_and_hms(2024, 3, 1, 0, 0, 0)
+                    Local
+                        .with_ymd_and_hms(2024, 3, 1, 12, 0, 0)
+                        .single()
                         .unwrap()
                         .timestamp(),
                 ),
