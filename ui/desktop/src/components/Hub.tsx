@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } fro
 import { defineMessages, useIntl } from '../i18n';
 import ChatInput from './ChatInput';
 import { ChatInputCard } from './ChatInputCard';
+import ActivityHeatmap from './ActivityHeatmap';
 import { ChatState } from '../types/chatState';
 import 'react-toastify/dist/ReactToastify.css';
 import { View, ViewOptions } from '../utils/navigationUtils';
@@ -135,6 +136,8 @@ export default function Hub({
           ) : null}
         </div>
         <p className="text-xl text-text-secondary mb-6">{greeting}</p>
+
+        <ActivityHeatmap setView={setView} />
 
         <ChatInputCard>
           <ChatInput
