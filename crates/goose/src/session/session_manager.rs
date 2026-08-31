@@ -891,6 +891,46 @@ fn remap_activity_session_ids<T>(
         .collect()
 }
 
+fn merge_visible_activity_sessions(
+    sessions: Vec<ActivitySessionMeta>,
+    parent_map: &HashMap<String, String>,
+    sessions_with_ledger: &HashSet<String>,
+    carried_forward_by_session: &HashMap<String, i64>,
+    types: &[SessionType],
+) -> Vec<ActivitySessionMeta> {
+    let mut merged: HashMap<String, ActivitySessionMeta> = HashMap::new();
+    for mut session in sessions {
+        let original_id = session.id.clone();
+        if sessions_with_ledger.contains(&original_id) {
+            session.accumulated_tokens = 0;
+        }
+        if let Some(carried) = carried_forward_by_session.get(&original_id) {
+            session.accumulated_tokens = session.accumulated_tokens.saturating_sub(*carried);
+        }
+        if let Some(parent) = parent_map.get(&original_id) {
+            session.id = parent.clone();
+        }
+        merged
+            .entry(session.id.clone())
+            .and_modify(|existing| {
+                existing.accumulated_tokens += session.accumulated_tokens;
+                if types.contains(&session.session_type) && !types.contains(&existing.session_type)
+                {
+                    existing.name = session.name.clone();
+                    existing.description = session.description.clone();
+                    existing.provider_name = session.provider_name.clone();
+                    existing.model_config_json = session.model_config_json.clone();
+                    existing.session_type = session.session_type;
+                }
+            })
+            .or_insert(session);
+    }
+    merged
+        .into_values()
+        .filter(|session| types.contains(&session.session_type))
+        .collect()
+}
+
 fn add_model_tokens(
     models: &mut HashMap<(Option<String>, Option<String>), SessionActivityModel>,
     model_sessions: &mut HashMap<(Option<String>, Option<String>), HashSet<String>>,
@@ -922,6 +962,7 @@ fn build_session_activity(
     ledger: Vec<ActivityLedgerRow>,
     sessions_with_ledger: HashSet<String>,
     last_message_days: HashMap<String, String>,
+    mut first_request_day: HashMap<String, String>,
 ) -> SessionActivity {
     let metas: HashMap<String, ActivitySessionMeta> = sessions
         .into_iter()
@@ -950,7 +991,6 @@ fn build_session_activity(
     let mut model_sessions: HashMap<(Option<String>, Option<String>), HashSet<String>> =
         HashMap::new();
     let mut carried_forward: HashMap<String, i64> = HashMap::new();
-    let mut first_request_day: HashMap<String, String> = HashMap::new();
 
     for row in ledger {
         if !metas.contains_key(&row.session_id) {
@@ -2843,6 +2883,28 @@ impl SessionStorage {
             })
             .collect();
 
+        let first_request_query = format!(
+            r#"
+            SELECT session_id, MIN({timestamp})
+            FROM usage_ledger
+            WHERE COALESCE(cost_source, '') != 'carried_forward'
+            GROUP BY session_id
+            "#,
+            timestamp = normalized_message_timestamp_sql("created_timestamp"),
+        );
+        let first_request_q =
+            sqlx::query_as::<_, (String, Option<i64>)>(AssertSqlSafe(first_request_query));
+        let first_request_day: HashMap<String, String> = first_request_q
+            .fetch_all(pool)
+            .await?
+            .into_iter()
+            .filter_map(|(session_id, timestamp)| {
+                timestamp
+                    .and_then(local_date_key)
+                    .map(|date| (session_id, date))
+            })
+            .collect();
+
         let parent_map = self.activity_visible_parent_map(types).await?;
         let carried_forward_by_session: HashMap<String, i64> = ledger
             .iter()
@@ -2851,29 +2913,13 @@ impl SessionStorage {
                 *map.entry(row.session_id.clone()).or_insert(0) += row.tokens;
                 map
             });
-        let mut merged: HashMap<String, ActivitySessionMeta> = HashMap::new();
-        for mut session in sessions {
-            let original_id = session.id.clone();
-            if sessions_with_ledger.contains(&original_id) {
-                session.accumulated_tokens = 0;
-            }
-            if let Some(carried) = carried_forward_by_session.get(&original_id) {
-                session.accumulated_tokens = session.accumulated_tokens.saturating_sub(*carried);
-            }
-            if let Some(parent) = parent_map.get(&original_id) {
-                session.id = parent.clone();
-            }
-            merged
-                .entry(session.id.clone())
-                .and_modify(|existing| {
-                    existing.accumulated_tokens += session.accumulated_tokens;
-                })
-                .or_insert(session);
-        }
-        let sessions: Vec<ActivitySessionMeta> = merged
-            .into_values()
-            .filter(|session| types.contains(&session.session_type))
-            .collect();
+        let sessions = merge_visible_activity_sessions(
+            sessions,
+            &parent_map,
+            &sessions_with_ledger,
+            &carried_forward_by_session,
+            types,
+        );
         let sessions_with_ledger: HashSet<String> = sessions
             .iter()
             .filter(|session| session.accumulated_tokens == 0)
@@ -2886,10 +2932,22 @@ impl SessionStorage {
             last_message_days
                 .into_iter()
                 .fold(HashMap::new(), |mut map, (session_id, date)| {
-                    let session_id = remap_session_id(session_id, &parent_map);
-                    map.entry(session_id)
+                    let remapped = remap_session_id(session_id.clone(), &parent_map);
+                    if remapped == session_id {
+                        map.insert(remapped, date);
+                    } else {
+                        map.entry(remapped).or_insert(date);
+                    }
+                    map
+                });
+        let first_request_day =
+            first_request_day
+                .into_iter()
+                .fold(HashMap::new(), |mut map, (session_id, date)| {
+                    let remapped = remap_session_id(session_id, &parent_map);
+                    map.entry(remapped)
                         .and_modify(|existing: &mut String| {
-                            if date > *existing {
+                            if date < *existing {
                                 *existing = date.clone();
                             }
                         })
@@ -2904,6 +2962,7 @@ impl SessionStorage {
             ledger,
             sessions_with_ledger,
             last_message_days,
+            first_request_day,
         ))
     }
 
@@ -5749,6 +5808,7 @@ mod tests {
                 ("a".into(), "2024-03-01".into()),
                 ("b".into(), "2024-03-02".into()),
             ]),
+            HashMap::new(),
         );
 
         assert_eq!(activity.days[0].date, "2024-03-01");
@@ -5809,6 +5869,7 @@ mod tests {
             ],
             HashSet::from(["s1".into()]),
             HashMap::from([("s1".into(), "2024-02-02".into())]),
+            HashMap::new(),
         );
 
         assert_eq!(activity.total_sessions, 1);
@@ -5855,6 +5916,7 @@ mod tests {
             Vec::new(),
             HashSet::from(["s1".into()]),
             HashMap::from([("s1".into(), "2024-01-15".into())]),
+            HashMap::new(),
         );
 
         assert_eq!(activity.total_tokens, 0);
@@ -5893,6 +5955,7 @@ mod tests {
             }],
             HashSet::new(),
             HashMap::from([("s1".into(), "2024-01-15".into())]),
+            HashMap::new(),
         );
 
         assert_eq!(activity.total_tokens, 999);
@@ -5928,6 +5991,7 @@ mod tests {
             Vec::new(),
             HashSet::new(),
             last_days.clone(),
+            HashMap::new(),
         );
         assert_eq!(year_2024.total_tokens, 0);
         assert_eq!(year_2024.days[0].total_tokens, 0);
@@ -5939,10 +6003,92 @@ mod tests {
             Vec::new(),
             HashSet::new(),
             last_days,
+            HashMap::new(),
         );
         assert_eq!(year_2025.total_tokens, 80);
         assert_eq!(year_2025.days[0].date, "2025-02-01");
         assert_eq!(year_2025.days[0].total_tokens, 80);
+    }
+
+    #[test]
+    fn test_merge_visible_activity_sessions_keeps_parent_metadata() {
+        let parent = ActivitySessionMeta {
+            id: "parent".into(),
+            name: "Parent chat".into(),
+            description: String::new(),
+            provider_name: Some("openai".into()),
+            model_config_json: Some(r#"{"model_name":"gpt-4o","toolshim":false}"#.into()),
+            accumulated_tokens: 10,
+            session_type: SessionType::User,
+        };
+        let child = ActivitySessionMeta {
+            id: "child".into(),
+            name: "Subagent".into(),
+            description: String::new(),
+            provider_name: Some("anthropic".into()),
+            model_config_json: Some(r#"{"model_name":"claude","toolshim":false}"#.into()),
+            accumulated_tokens: 40,
+            session_type: SessionType::SubAgent,
+        };
+        let merged = merge_visible_activity_sessions(
+            vec![child, parent],
+            &HashMap::from([("child".into(), "parent".into())]),
+            &HashSet::new(),
+            &HashMap::new(),
+            &[SessionType::User, SessionType::Scheduled],
+        );
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].id, "parent");
+        assert_eq!(merged[0].name, "Parent chat");
+        assert_eq!(merged[0].session_type, SessionType::User);
+        assert_eq!(merged[0].accumulated_tokens, 50);
+        assert_eq!(merged[0].provider_name.as_deref(), Some("openai"));
+    }
+
+    #[test]
+    fn test_build_session_activity_uses_first_request_day_outside_selected_year() {
+        let june = Local
+            .with_ymd_and_hms(2024, 6, 1, 12, 0, 0)
+            .single()
+            .unwrap()
+            .timestamp();
+        let activity = build_session_activity(
+            2024,
+            vec![ActivitySessionMeta {
+                id: "s1".into(),
+                name: "Resumed chat".into(),
+                description: String::new(),
+                provider_name: Some("openai".into()),
+                model_config_json: Some(r#"{"model_name":"gpt-4o","toolshim":false}"#.into()),
+                accumulated_tokens: 0,
+                session_type: SessionType::User,
+            }],
+            Vec::new(),
+            vec![
+                ActivityLedgerRow {
+                    session_id: "s1".into(),
+                    model: None,
+                    timestamp: june,
+                    tokens: 400,
+                    cost_source: Some("carried_forward".into()),
+                },
+                ActivityLedgerRow {
+                    session_id: "s1".into(),
+                    model: Some("gpt-4o".into()),
+                    timestamp: june,
+                    tokens: 50,
+                    cost_source: Some("estimated".into()),
+                },
+            ],
+            HashSet::from(["s1".into()]),
+            HashMap::new(),
+            HashMap::from([("s1".into(), "2023-03-01".into())]),
+        );
+
+        assert_eq!(activity.total_tokens, 50);
+        assert_eq!(activity.days.len(), 1);
+        assert_eq!(activity.days[0].date, "2024-06-01");
+        assert_eq!(activity.days[0].total_tokens, 50);
     }
 
     #[test]

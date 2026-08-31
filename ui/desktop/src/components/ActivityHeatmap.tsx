@@ -242,7 +242,7 @@ export default function ActivityHeatmap({
         </div>
       </div>
 
-      {loading ? (
+      {loading || (!error && !loadedActivity) ? (
         <p className="text-xs text-text-secondary">{intl.formatMessage(i18n.loading)}</p>
       ) : error ? (
         <p className="text-xs text-text-secondary">{intl.formatMessage(i18n.loadError)}</p>
@@ -255,7 +255,7 @@ export default function ActivityHeatmap({
             maxSessionCount={maxSessionCount}
             onSelectDay={setSelectedDay}
           />
-          {!loadedActivity?.days.length && (
+          {loadedActivity && !loadedActivity.days.length && (
             <p className="text-xs text-text-secondary mt-2">
               {intl.formatMessage(i18n.empty, { year })}
             </p>
@@ -404,8 +404,8 @@ function HeatmapGrid({
                     : 'opacity-20'
               )}
               role={cell.inYear && day ? 'button' : undefined}
-              tabIndex={cell.inYear && day ? 0 : -1}
-              aria-label={label}
+              tabIndex={cell.inYear && day ? 0 : undefined}
+              aria-label={cell.inYear && day ? label : undefined}
               onClick={() => {
                 if (day) onSelectDay(day);
               }}
