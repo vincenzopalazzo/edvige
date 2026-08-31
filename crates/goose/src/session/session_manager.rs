@@ -954,8 +954,7 @@ fn merge_visible_activity_sessions(
         let original_id = session.id.clone();
         if sessions_with_ledger.contains(&original_id) {
             session.accumulated_tokens = 0;
-        }
-        if let Some(carried) = carried_forward_by_session.get(&original_id) {
+        } else if let Some(carried) = carried_forward_by_session.get(&original_id) {
             session.accumulated_tokens = session.accumulated_tokens.saturating_sub(*carried);
         }
         if let Some(parent) = parent_map.get(&original_id) {
@@ -1082,7 +1081,7 @@ fn build_session_activity(
             &mut models,
             &mut model_sessions,
             &row.session_id,
-            metas.get(&row.session_id).and_then(session_provider_id),
+            None,
             model_id,
             row.tokens,
         );
@@ -6084,8 +6083,8 @@ mod tests {
         assert_eq!(activity.models[0].total_tokens, 70);
         assert_eq!(activity.models[1].model_id.as_deref(), Some("gpt-4o"));
         assert_eq!(activity.models[1].total_tokens, 30);
-        assert_eq!(activity.models[0].provider_id.as_deref(), Some("openai"));
-        assert_eq!(activity.models[1].provider_id.as_deref(), Some("openai"));
+        assert_eq!(activity.models[0].provider_id, None);
+        assert_eq!(activity.models[1].provider_id, None);
     }
 
     #[test]
@@ -6240,6 +6239,37 @@ mod tests {
         assert_eq!(merged[0].session_type, SessionType::User);
         assert_eq!(merged[0].accumulated_tokens, 50);
         assert_eq!(merged[0].provider_name.as_deref(), Some("openai"));
+    }
+
+    #[test]
+    fn test_merge_visible_activity_sessions_keeps_ledgerless_child_after_parent_carry() {
+        let parent = ActivitySessionMeta {
+            id: "parent".into(),
+            name: "Parent chat".into(),
+            description: String::new(),
+            provider_name: Some("openai".into()),
+            model_config_json: Some(r#"{"model_name":"gpt-4o","toolshim":false}"#.into()),
+            accumulated_tokens: 400,
+            session_type: SessionType::User,
+        };
+        let child = ActivitySessionMeta {
+            id: "child".into(),
+            name: "Subagent".into(),
+            description: String::new(),
+            provider_name: Some("anthropic".into()),
+            model_config_json: Some(r#"{"model_name":"claude","toolshim":false}"#.into()),
+            accumulated_tokens: 40,
+            session_type: SessionType::SubAgent,
+        };
+        let merged = merge_visible_activity_sessions(
+            vec![child, parent],
+            &HashMap::from([("child".into(), "parent".into())]),
+            &HashSet::from(["parent".into()]),
+            &HashMap::from([("parent".into(), 400)]),
+            &[SessionType::User, SessionType::Scheduled],
+        );
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].accumulated_tokens, 40);
     }
 
     #[test]
