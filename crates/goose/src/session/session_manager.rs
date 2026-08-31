@@ -1082,7 +1082,7 @@ fn build_session_activity(
             &mut models,
             &mut model_sessions,
             &row.session_id,
-            None,
+            metas.get(&row.session_id).and_then(session_provider_id),
             model_id,
             row.tokens,
         );
@@ -6084,8 +6084,8 @@ mod tests {
         assert_eq!(activity.models[0].total_tokens, 70);
         assert_eq!(activity.models[1].model_id.as_deref(), Some("gpt-4o"));
         assert_eq!(activity.models[1].total_tokens, 30);
-        assert_eq!(activity.models[0].provider_id, None);
-        assert_eq!(activity.models[1].provider_id, None);
+        assert_eq!(activity.models[0].provider_id.as_deref(), Some("openai"));
+        assert_eq!(activity.models[1].provider_id.as_deref(), Some("openai"));
     }
 
     #[test]

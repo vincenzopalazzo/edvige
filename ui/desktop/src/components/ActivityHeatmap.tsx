@@ -187,6 +187,12 @@ export default function ActivityHeatmap({
     });
   };
 
+  const selectYear = (nextYear: number) => {
+    setYear(nextYear);
+    setLoading(true);
+    setError(false);
+  };
+
   return (
     <div className="mb-8">
       <div className="flex items-baseline justify-between gap-3 mb-3">
@@ -211,7 +217,7 @@ export default function ActivityHeatmap({
             variant="ghost"
             size="xs"
             shape="pill"
-            onClick={() => setYear((current) => Math.max(MIN_ACTIVITY_YEAR, current - 1))}
+            onClick={() => selectYear(Math.max(MIN_ACTIVITY_YEAR, year - 1))}
             disabled={year <= MIN_ACTIVITY_YEAR}
             aria-label={intl.formatMessage(i18n.previousYear)}
           >
@@ -223,7 +229,7 @@ export default function ActivityHeatmap({
             variant="ghost"
             size="xs"
             shape="pill"
-            onClick={() => setYear((current) => Math.min(currentYear, current + 1))}
+            onClick={() => selectYear(Math.min(currentYear, year + 1))}
             disabled={year >= currentYear}
             aria-label={intl.formatMessage(i18n.nextYear)}
           >
