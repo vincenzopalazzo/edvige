@@ -1087,7 +1087,6 @@ fn build_session_activity(
         );
     }
 
-    let carried_forward_totals = carried_forward.clone();
     for (session_id, tokens) in carried_forward {
         if tokens <= 0 {
             continue;
@@ -1134,7 +1133,7 @@ fn build_session_activity(
             continue;
         }
         let leftover = meta.accumulated_tokens;
-        if leftover <= 0 || leftover == *carried_forward_totals.get(session_id).unwrap_or(&0) {
+        if leftover <= 0 {
             continue;
         }
         let Some(date) = last_message_days.get(session_id) else {
@@ -6135,7 +6134,7 @@ mod tests {
                 description: String::new(),
                 provider_name: Some("openai".into()),
                 model_config_json: Some(r#"{"model_name":"gpt-4o","toolshim":false}"#.into()),
-                accumulated_tokens: 999,
+                accumulated_tokens: 0,
                 session_type: SessionType::User,
             }],
             vec![ActivityEvent {
@@ -6270,6 +6269,42 @@ mod tests {
         );
         assert_eq!(merged.len(), 1);
         assert_eq!(merged[0].accumulated_tokens, 40);
+    }
+
+    #[test]
+    fn test_build_session_activity_keeps_leftover_equal_to_carried_forward() {
+        let january = Local
+            .with_ymd_and_hms(2024, 1, 15, 12, 0, 0)
+            .single()
+            .unwrap()
+            .timestamp();
+        let activity = build_session_activity(
+            2024,
+            vec![ActivitySessionMeta {
+                id: "parent".into(),
+                name: "Parent chat".into(),
+                description: String::new(),
+                provider_name: Some("openai".into()),
+                model_config_json: Some(r#"{"model_name":"gpt-4o","toolshim":false}"#.into()),
+                accumulated_tokens: 400,
+                session_type: SessionType::User,
+            }],
+            Vec::new(),
+            vec![ActivityLedgerRow {
+                session_id: "parent".into(),
+                model: None,
+                timestamp: january,
+                tokens: 400,
+                cost_source: Some("carried_forward".into()),
+            }],
+            HashSet::new(),
+            HashMap::from([("parent".into(), "2024-01-15".into())]),
+            HashMap::from([("parent".into(), "2024-01-16".into())]),
+        );
+
+        assert_eq!(activity.total_tokens, 800);
+        assert_eq!(activity.days.len(), 1);
+        assert_eq!(activity.days[0].total_tokens, 800);
     }
 
     #[test]
