@@ -302,9 +302,7 @@ impl MessageContentBlock {
     pub fn is_visible_output(&self) -> bool {
         match self {
             MessageContentBlock::Text(text) => !text.text.trim().is_empty(),
-            MessageContentBlock::Image(_)
-            | MessageContentBlock::ToolRequest(_)
-            | MessageContentBlock::FrontendToolRequest(_) => true,
+            MessageContentBlock::Image(_) | MessageContentBlock::ToolRequest(_) => true,
             MessageContentBlock::Thinking(_)
             | MessageContentBlock::RedactedThinking(_)
             | MessageContentBlock::ToolResponse(_)
