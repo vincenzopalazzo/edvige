@@ -195,7 +195,28 @@ export default function ActivityHeatmap({
 
   return (
     <div className="mt-8">
-      <div className="flex items-baseline justify-between gap-3 mb-3">
+      {loading || (!error && !loadedActivity) ? (
+        <p className="text-xs text-text-secondary">{intl.formatMessage(i18n.loading)}</p>
+      ) : error ? (
+        <p className="text-xs text-text-secondary">{intl.formatMessage(i18n.loadError)}</p>
+      ) : (
+        <>
+          <HeatmapGrid
+            cells={cells}
+            weekCount={weekCount}
+            daysByDate={daysByDate}
+            maxSessionCount={maxSessionCount}
+            onSelectDay={setSelectedDay}
+          />
+          {loadedActivity && !loadedActivity.days.length && (
+            <p className="text-xs text-text-secondary mt-2">
+              {intl.formatMessage(i18n.empty, { year })}
+            </p>
+          )}
+        </>
+      )}
+
+      <div className="flex items-baseline justify-between gap-3 mt-3">
         <div>
           {loadedActivity && (
             <>
@@ -247,27 +268,6 @@ export default function ActivityHeatmap({
           </Button>
         </div>
       </div>
-
-      {loading || (!error && !loadedActivity) ? (
-        <p className="text-xs text-text-secondary">{intl.formatMessage(i18n.loading)}</p>
-      ) : error ? (
-        <p className="text-xs text-text-secondary">{intl.formatMessage(i18n.loadError)}</p>
-      ) : (
-        <>
-          <HeatmapGrid
-            cells={cells}
-            weekCount={weekCount}
-            daysByDate={daysByDate}
-            maxSessionCount={maxSessionCount}
-            onSelectDay={setSelectedDay}
-          />
-          {loadedActivity && !loadedActivity.days.length && (
-            <p className="text-xs text-text-secondary mt-2">
-              {intl.formatMessage(i18n.empty, { year })}
-            </p>
-          )}
-        </>
-      )}
 
       <Dialog open={selectedDay !== null} onOpenChange={(open) => !open && setSelectedDay(null)}>
         <DialogContent className="max-w-md">
