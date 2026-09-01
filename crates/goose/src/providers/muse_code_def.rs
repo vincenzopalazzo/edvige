@@ -58,7 +58,14 @@ struct MuseToken {
     access_token: String,
     #[serde(default)]
     refresh_token: String,
+    #[serde(default)]
+    api_key: String,
     expires_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize)]
+struct MintedKey {
+    api_key: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -69,6 +76,7 @@ pub(crate) struct TokenCache {
 struct MuseCodeAuth {
     cache: TokenCache,
     client: Client,
+    api_host: String,
     auth_host: String,
     client_id: String,
 }
@@ -93,6 +101,7 @@ fn tokens_to_muse(tokens: DeviceFlowTokens, prior_refresh: Option<&str>) -> Muse
     MuseToken {
         access_token: tokens.access_token,
         refresh_token,
+        api_key: String::new(),
         expires_at,
     }
 }
@@ -147,7 +156,46 @@ fn muse_cli_auth_path() -> PathBuf {
         .join(".config/muse/auth.json")
 }
 
+fn muse_cli_keychain_token() -> Option<MuseToken> {
+    #[cfg(feature = "system-keyring")]
+    {
+        if std::env::var("MUSE_AUTH_PATH").is_ok() {
+            return None;
+        }
+
+        #[derive(Deserialize)]
+        struct Stored {
+            #[serde(default)]
+            api_key: String,
+            #[serde(default)]
+            access_token: String,
+        }
+
+        let entry = keyring::Entry::new("ai.meta.dev.credentials", "meta").ok()?;
+        let raw = entry.get_password().ok()?;
+        let stored: Stored = serde_json::from_str(&raw).ok()?;
+        if stored.api_key.is_empty() {
+            return None;
+        }
+        Some(MuseToken {
+            access_token: stored.access_token,
+            refresh_token: String::new(),
+            api_key: stored.api_key,
+            expires_at: Utc::now() + Duration::seconds(DEFAULT_TOKEN_LIFETIME_SECS),
+        })
+    }
+
+    #[cfg(not(feature = "system-keyring"))]
+    {
+        None
+    }
+}
+
 fn muse_cli_token() -> Option<MuseToken> {
+    if let Some(token) = muse_cli_keychain_token() {
+        return Some(token);
+    }
+
     #[derive(Deserialize)]
     struct AuthFile {
         providers: Providers,
@@ -159,13 +207,21 @@ fn muse_cli_token() -> Option<MuseToken> {
     #[derive(Deserialize)]
     struct MetaSlot {
         mechanism: String,
+        #[serde(default)]
         access_token: String,
+        #[serde(default)]
+        api_key: String,
         expires_at: Option<f64>,
     }
 
     let raw = std::fs::read_to_string(muse_cli_auth_path()).ok()?;
     let parsed: AuthFile = serde_json::from_str(&raw).ok()?;
-    if parsed.providers.meta.mechanism != "oauth" || parsed.providers.meta.access_token.is_empty() {
+    if parsed.providers.meta.mechanism != "oauth" {
+        return None;
+    }
+    let api_key = parsed.providers.meta.api_key;
+    let access_token = parsed.providers.meta.access_token;
+    if api_key.is_empty() && access_token.is_empty() {
         return None;
     }
     let expires_at = parsed
@@ -175,8 +231,9 @@ fn muse_cli_token() -> Option<MuseToken> {
         .and_then(|ts| DateTime::from_timestamp(ts as i64, 0))
         .unwrap_or_else(|| Utc::now() + Duration::seconds(DEFAULT_TOKEN_LIFETIME_SECS));
     Some(MuseToken {
-        access_token: parsed.providers.meta.access_token,
+        access_token,
         refresh_token: String::new(),
+        api_key,
         expires_at,
     })
 }
@@ -248,7 +305,36 @@ impl MuseCodeAuth {
         let token_url = join_url(&self.auth_host, "/oidc/device/token/");
         let cfg = self.device_flow_config(&device_auth_url, &token_url);
         let tokens = run_device_flow(&self.client, &cfg).await?;
-        Ok(tokens_to_muse(tokens, None))
+        let mut token = tokens_to_muse(tokens, None);
+        token.api_key = self.mint_api_key(&token.access_token).await?;
+        Ok(token)
+    }
+
+    async fn mint_api_key(&self, access_token: &str) -> Result<String> {
+        let url = join_url(&self.api_host, "/muse-code/key");
+        let response = self
+            .client
+            .post(url)
+            .header(ACCEPT, "application/json")
+            .header(USER_AGENT, MUSE_CODE_USER_AGENT)
+            .header("x-api-version", "1.0.0")
+            .bearer_auth(access_token)
+            .json(&serde_json::json!({}))
+            .send()
+            .await?;
+        let status = response.status();
+        let bytes = response.bytes().await?;
+        if !status.is_success() {
+            anyhow::bail!(
+                "key mint failed ({status}): {}",
+                String::from_utf8_lossy(&bytes)
+            );
+        }
+        let minted: MintedKey = serde_json::from_slice(&bytes)?;
+        minted
+            .api_key
+            .filter(|key| !key.is_empty())
+            .ok_or_else(|| anyhow::anyhow!("mint response missing api_key"))
     }
 
     async fn do_refresh_token(&self, refresh_token: &str) -> Result<MuseToken> {
@@ -268,7 +354,7 @@ impl MuseCodeAuth {
     async fn get_valid_token(&self) -> Result<MuseToken, ProviderError> {
         if let Some(token) = self.cache.load() {
             match self.use_or_refresh(token).await {
-                Ok(token) => return Ok(token),
+                Ok(token) => return self.ensure_api_key(token).await,
                 Err(ProviderError::NotConfigured | ProviderError::Authentication(_)) => {}
                 Err(error) => return Err(error),
             }
@@ -276,11 +362,30 @@ impl MuseCodeAuth {
 
         if let Some(token) = muse_cli_token() {
             if token.expires_at > Utc::now() {
-                return Ok(token);
+                return self.ensure_api_key(token).await;
             }
         }
 
         Err(ProviderError::NotConfigured)
+    }
+
+    async fn ensure_api_key(&self, mut token: MuseToken) -> Result<MuseToken, ProviderError> {
+        if !token.api_key.is_empty() {
+            return Ok(token);
+        }
+        if token.access_token.is_empty() {
+            return Err(ProviderError::NotConfigured);
+        }
+        token.api_key = self
+            .mint_api_key(&token.access_token)
+            .await
+            .map_err(|error| {
+                ProviderError::Authentication(format!("Failed to mint Muse API key: {error}"))
+            })?;
+        if let Err(error) = self.cache.save(&token) {
+            tracing::warn!("failed to persist minted muse_code api key: {error}");
+        }
+        Ok(token)
     }
 
     async fn use_or_refresh(&self, token: MuseToken) -> Result<MuseToken, ProviderError> {
@@ -322,9 +427,12 @@ impl MuseCodeAuth {
 impl AuthProvider for SharedAuthProvider {
     async fn get_auth_header(&self) -> Result<(String, String)> {
         let token = self.0.get_valid_token().await?;
+        if token.api_key.is_empty() {
+            anyhow::bail!("muse_code api key is missing; sign in again");
+        }
         Ok((
             "Authorization".to_string(),
-            format!("Bearer {}", token.access_token),
+            format!("Bearer {}", token.api_key),
         ))
     }
 }
@@ -355,6 +463,7 @@ async fn from_env(tls_config: Option<TlsConfig>) -> Result<MuseCodeProvider> {
                 crate::providers::base::DEFAULT_CONNECT_TIMEOUT_SECS,
             ))
             .build()?,
+        api_host: host.clone(),
         auth_host,
         client_id,
     });
@@ -498,6 +607,7 @@ mod tests {
         MuseToken {
             access_token: access.to_string(),
             refresh_token: "refresh".to_string(),
+            api_key: access.to_string(),
             expires_at: Utc::now() + Duration::hours(1),
         }
     }
@@ -643,6 +753,13 @@ mod tests {
             })))
             .mount(&server)
             .await;
+        Mock::given(method("POST"))
+            .and(path("/muse-code/key"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "api_key": "LLM-muse-key"
+            })))
+            .mount(&server)
+            .await;
 
         let _guard = env_lock::lock_env([
             ("GOOSE_PATH_ROOT", None::<&str>),
@@ -676,6 +793,7 @@ mod tests {
         let stored = TokenCache::new().load().expect("token should be cached");
         assert_eq!(stored.access_token, "muse-access");
         assert_eq!(stored.refresh_token, "muse-refresh");
+        assert_eq!(stored.api_key, "LLM-muse-key");
     }
 
     #[tokio::test]
@@ -699,6 +817,13 @@ mod tests {
                 "access_token": "new-access",
                 "refresh_token": "new-refresh",
                 "expires_in": 3600
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/muse-code/key"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "api_key": "LLM-new-key"
             })))
             .mount(&server)
             .await;
@@ -738,6 +863,7 @@ mod tests {
         let stored = TokenCache::new().load().expect("token should be cached");
         assert_eq!(stored.access_token, "new-access");
         assert_eq!(stored.refresh_token, "new-refresh");
+        assert_eq!(stored.api_key, "LLM-new-key");
     }
 
     #[tokio::test]
@@ -812,6 +938,7 @@ mod tests {
                     "meta": {
                         "mechanism": "oauth",
                         "access_token": "cli-access",
+                        "api_key": "LLM-cli-key",
                         "expires_at": (Utc::now() + Duration::hours(1)).timestamp()
                     }
                 }
@@ -837,7 +964,7 @@ mod tests {
                 .headers
                 .get("authorization")
                 .and_then(|value| value.to_str().ok()),
-            Some("Bearer cli-access")
+            Some("Bearer LLM-cli-key")
         );
     }
 }
