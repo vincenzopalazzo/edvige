@@ -458,17 +458,6 @@ export default function BaseChat({
               </div>
             )}
 
-            {recipe && (
-              <div className={hasStartedUsingRecipe ? 'mb-6' : ''}>
-                <RecipeActivities
-                  append={appendToChat}
-                  activities={Array.isArray(recipe.activities) ? recipe.activities : null}
-                  title={recipe.title}
-                  parameterValues={session?.user_recipe_values || {}}
-                />
-              </div>
-            )}
-
             {messages.length > 0 || recipe ? (
               <>
                 <SearchView>
@@ -488,6 +477,17 @@ export default function BaseChat({
                 <div className="block h-8" />
               </>
             ) : null}
+
+            {recipe && (
+              <div className={hasStartedUsingRecipe ? 'mb-6' : ''}>
+                <RecipeActivities
+                  append={appendToChat}
+                  activities={Array.isArray(recipe.activities) ? recipe.activities : null}
+                  title={recipe.title}
+                  parameterValues={session?.user_recipe_values || {}}
+                />
+              </div>
+            )}
           </ScrollArea>
 
           {chatState !== ChatState.Idle && (
