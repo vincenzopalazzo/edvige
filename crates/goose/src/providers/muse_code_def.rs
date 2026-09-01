@@ -4,7 +4,9 @@ use goose_providers::anthropic::{
     AnthropicProvider, AnthropicProviderBuilder, ANTHROPIC_API_VERSION,
 };
 use goose_providers::api_client::{ApiClient, AuthMethod, TlsConfig};
-use goose_providers::base::{ConfigKey, ModelInfo, ProviderDescriptor, ProviderMetadata};
+use goose_providers::base::{
+    model_info_for_provider_model, ConfigKey, ModelInfo, ProviderDescriptor, ProviderMetadata,
+};
 
 use crate::config::Config;
 use crate::providers::base::ProviderDef;
@@ -13,10 +15,10 @@ pub const MUSE_CODE_PROVIDER_NAME: &str = "muse_code";
 pub const MUSE_CODE_API_HOST: &str = "https://api.meta.ai";
 const MUSE_CODE_DOC_URL: &str = "https://ai.developer.meta.com/docs/muse-code/subscriptions";
 
-const MUSE_CODE_KNOWN_MODELS: &[(&str, usize)] = &[
-    ("muse-spark-1.2", 1_048_576),
-    ("muse-spark-1.1", 1_000_000),
-    ("muse-spark-1.2-contributor", 1_048_576),
+const MUSE_CODE_KNOWN_MODELS: &[&str] = &[
+    "muse-spark-1.2",
+    "muse-spark-1.1",
+    "muse-spark-1.2-contributor",
 ];
 
 pub struct MuseCodeProviderDef;
@@ -24,7 +26,7 @@ pub struct MuseCodeProviderDef;
 fn known_models() -> Vec<ModelInfo> {
     MUSE_CODE_KNOWN_MODELS
         .iter()
-        .map(|&(name, context_limit)| ModelInfo::new(name).with_context_limit(context_limit))
+        .map(|&name| model_info_for_provider_model(MUSE_CODE_PROVIDER_NAME, name))
         .collect()
 }
 
@@ -110,6 +112,18 @@ mod tests {
                 "muse-spark-1.1",
                 "muse-spark-1.2-contributor"
             ]
+        );
+        assert_eq!(
+            metadata
+                .known_models
+                .iter()
+                .map(|model| model.context_limit)
+                .collect::<Vec<_>>(),
+            vec![Some(1_048_576), Some(1_000_000), Some(1_048_576)]
+        );
+        assert!(
+            metadata.known_models.iter().all(|model| model.reasoning),
+            "muse-spark models should resolve as reasoning models via the canonical registry"
         );
         assert!(metadata
             .config_keys
