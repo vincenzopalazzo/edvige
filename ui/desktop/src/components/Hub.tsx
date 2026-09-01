@@ -137,8 +137,6 @@ export default function Hub({
         </div>
         <p className="text-xl text-text-secondary mb-6">{greeting}</p>
 
-        <ActivityHeatmap setView={setView} />
-
         <ChatInputCard>
           <ChatInput
             sessionId={null}
@@ -162,6 +160,8 @@ export default function Hub({
             onNextChatExtensionDraftChange={handleNextChatExtensionDraftChange}
           />
         </ChatInputCard>
+
+        <ActivityHeatmap setView={setView} />
       </div>
     </div>
   );

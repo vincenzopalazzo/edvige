@@ -194,7 +194,7 @@ export default function ActivityHeatmap({
   };
 
   return (
-    <div className="mb-8">
+    <div className="mt-8">
       <div className="flex items-baseline justify-between gap-3 mb-3">
         <div>
           {loadedActivity && (
