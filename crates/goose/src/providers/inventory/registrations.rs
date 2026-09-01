@@ -16,6 +16,7 @@ use crate::providers::google::{GOOGLE_API_HOST, GOOGLE_PROVIDER_NAME};
 use crate::providers::huggingface::HuggingFaceProvider;
 use crate::providers::huggingface_auth;
 use crate::providers::kimicode;
+use crate::providers::muse_code_def::{MUSE_CODE_API_HOST, MUSE_CODE_PROVIDER_NAME};
 use crate::providers::ollama::OLLAMA_PROVIDER_NAME;
 use crate::providers::openai::{OPEN_AI_DEFAULT_BASE_PATH, OPEN_AI_PROVIDER_NAME};
 use crate::providers::pi_acp::{PI_ACP_BINARY, PI_ACP_PROVIDER_NAME};
@@ -197,6 +198,25 @@ pub fn refresh_only() -> InventoryRegistration {
 
 pub fn kimi_code_inventory() -> InventoryRegistration {
     refresh_only().with_configured(kimicode::has_configured_token)
+}
+
+pub fn muse_code_inventory() -> InventoryRegistration {
+    InventoryRegistration::new(true, || {
+        let config = Config::global();
+        let mut identity =
+            InventoryIdentityInput::new(MUSE_CODE_PROVIDER_NAME, MUSE_CODE_PROVIDER_NAME)
+                .with_public(
+                    "host",
+                    config
+                        .get_param::<String>("MUSE_CODE_HOST")
+                        .unwrap_or_else(|_| MUSE_CODE_API_HOST.to_string()),
+                );
+
+        if let Some(api_key) = config_secret_value(config, "META_MODEL_API_KEY") {
+            identity = identity.with_secret("api_key", api_key);
+        }
+        Ok(identity)
+    })
 }
 
 pub fn chatgpt_codex_inventory() -> InventoryRegistration {
