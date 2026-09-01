@@ -244,7 +244,14 @@ export default function ProgressiveMessageList({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isLoading, messages.length]);
 
-  const rowContexts = useMemo(() => deriveMessageRowContexts(messages), [messages]);
+  const rowContextsCacheRef = useRef<
+    { messages: Message[]; contexts: ReturnType<typeof deriveMessageRowContexts> } | undefined
+  >(undefined);
+  const rowContexts = useMemo(() => {
+    const contexts = deriveMessageRowContexts(messages, rowContextsCacheRef.current);
+    rowContextsCacheRef.current = { messages, contexts };
+    return contexts;
+  }, [messages]);
   const messagesToRender = messages.slice(0, renderedCount);
   const messageRows = messagesToRender
     .map((message, index) => {
