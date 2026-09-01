@@ -64,4 +64,21 @@ describe('Catppuccin palettes', () => {
       getCatppuccinAccentColor('catppuccin-mocha', 'blue')
     );
   });
+
+  it('uses dark inverse text on Latte so accent buttons stay readable', () => {
+    const latteText = catppuccinFlavors['catppuccin-latte'].palette.text;
+    const mochaCrust = catppuccinFlavors['catppuccin-mocha'].palette.crust;
+    for (const accent of CATPPUCCIN_ACCENTS) {
+      const latte = buildCatppuccinColorTokens('catppuccin-latte', accent);
+      expect(latte['--color-text-inverse']).toBe(latteText);
+      expect(latte['--color-background-inverse']).toBe(
+        getCatppuccinAccentColor('catppuccin-latte', accent)
+      );
+      expect(latte['--color-text-inverse']).not.toBe(
+        catppuccinFlavors['catppuccin-latte'].palette.base
+      );
+    }
+    const mocha = buildCatppuccinColorTokens('catppuccin-mocha', 'mauve');
+    expect(mocha['--color-text-inverse']).toBe(mochaCrust);
+  });
 });

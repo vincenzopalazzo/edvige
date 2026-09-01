@@ -254,7 +254,7 @@ export function buildCatppuccinColorTokens(
 ): CatppuccinColorTokens {
   const { palette, variant } = catppuccinFlavors[flavorId];
   const accentColor = palette[accent];
-  const inverseText = variant === 'light' ? palette.base : palette.crust;
+  const inverseText = variant === 'light' ? palette.text : palette.crust;
   const shadowRgb = variant === 'light' ? '76, 79, 105' : '17, 17, 27';
 
   return {

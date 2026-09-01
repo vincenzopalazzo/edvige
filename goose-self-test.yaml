@@ -18,6 +18,7 @@ activities:
   - Validate GDK observability hook lifecycle events and payload opt-in
   - Test error boundaries including nested delegation prevention
   - Test session lifecycle status (archive/unarchive, PR-based status inference)
+  - Validate Catppuccin desktop and CLI theme selection
   - Generate comprehensive test report
 
 parameters:
@@ -25,7 +26,7 @@ parameters:
     input_type: string
     requirement: optional
     default: "all"
-    description: "Which test phases to run: all, basic, extensions, delegation, reasoning, acp-effort, advanced"
+    description: "Which test phases to run: all, basic, extensions, delegation, reasoning, acp-effort, themes, advanced"
 
   - key: test_depth
     input_type: string
@@ -467,6 +468,27 @@ prompt: |
   Log results to: {{ workspace_dir }}/phase4_advanced.md
   {% endif %}
 
+  {% if test_phases == "all" or "themes" in test_phases %}
+  ## 🎨 PHASE 4B: Catppuccin Theme Selection
+
+  Validate the desktop and CLI Catppuccin theme work from this fork.
+
+  ### CLI theme names
+  1. Confirm `/t latte`, `/t frappe`, `/t macchiato`, and `/t mocha` are accepted CLI theme names, including the `catppuccin-*` aliases.
+  2. Confirm `/t` help lists latte, frappe, macchiato, and mocha alongside light, dark, and ansi.
+  3. If a live CLI session is available, set `/t mocha` then `/t latte` and confirm the theme change is acknowledged rather than rejected as unknown.
+  If the CLI binary is unavailable, inspect `crates/goose-cli/src/session/output.rs` (`CLI_THEME_NAMES`, `is_cli_theme_name`) and mark the live switch skipped rather than failed.
+
+  ### Desktop palettes
+  When running from a goose source checkout with the UI toolchain:
+  1. Run `cd ui/desktop && pnpm exec vitest run src/theme/catppuccin.test.ts src/theme/chat-chrome.test.ts src/components/GooseSidebar/ThemeSelector.test.tsx`.
+  2. Confirm Latte inverse text uses the dark Latte `text` color (not nearly-white `base`) so accent-colored buttons remain readable.
+  3. Confirm all four flavors (Latte, Frappé, Macchiato, Mocha) are registered as named themes.
+  If the UI toolchain is unavailable, mark this validation as skipped rather than failed.
+
+  Log results to: {{ workspace_dir }}/phase4b_themes.md
+  {% endif %}
+
   ## 📊 PHASE 5: Final Report Generation
 
   Create TWO reports:
@@ -501,6 +523,7 @@ prompt: |
   • Delegate (async): [✓/✗]
   • Delegate cancellation: [✓/✗]
   • Nested delegation blocked: [✓/✗]
+  • Catppuccin themes: [✓/✗]
 
   ⚠️ Issues Found:
   • [Issue 1 - brief description]

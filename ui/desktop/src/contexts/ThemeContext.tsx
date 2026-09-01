@@ -184,7 +184,6 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     };
   }, []);
 
-  // Apply theme class and CSS tokens whenever the resolved theme or accent changes
   useEffect(() => {
     applyThemeToDocument(themes[resolvedThemeId].variant);
     applyThemeTokens(resolvedThemeId, catppuccinAccent);
