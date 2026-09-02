@@ -518,10 +518,34 @@ export async function prepareUpdateInstall(options: {
 }
 
 export class GitHubUpdater {
-  private readonly owner = process.env.GITHUB_OWNER || 'aaif-goose';
-  private readonly repo = process.env.GITHUB_REPO || 'goose';
-  private readonly bundleName = process.env.GOOSE_BUNDLE_NAME || 'Goose';
-  private readonly apiUrl = `https://api.github.com/repos/${this.owner}/${this.repo}/releases/latest`;
+  private readonly defaultOwner = process.env.GITHUB_OWNER || 'aaif-goose';
+  private readonly defaultRepo = process.env.GITHUB_REPO || 'goose';
+  private readonly defaultBundleName = process.env.GOOSE_BUNDLE_NAME || 'Goose';
+  private customOwner: string | null = null;
+  private customRepo: string | null = null;
+  private customBundleName: string | null = null;
+
+  private get owner(): string {
+    return this.customOwner || this.defaultOwner;
+  }
+  private get repo(): string {
+    return this.customRepo || this.defaultRepo;
+  }
+  private get bundleName(): string {
+    return this.customBundleName || this.defaultBundleName;
+  }
+  private get apiUrl(): string {
+    return `https://api.github.com/repos/${this.owner}/${this.repo}/releases/latest`;
+  }
+
+  setCustomRepository(owner?: string | null, repo?: string | null, bundleName?: string | null): void {
+    this.customOwner = owner?.trim() || null;
+    this.customRepo = repo?.trim() || null;
+    if (bundleName !== undefined) this.customBundleName = bundleName?.trim() || null;
+  }
+  getEffectiveRepository(): { owner: string; repo: string; bundleName: string; apiUrl: string } {
+    return { owner: this.owner, repo: this.repo, bundleName: this.bundleName, apiUrl: this.apiUrl };
+  }
 
   async checkForUpdates(): Promise<UpdateCheckResult> {
     const startTime = Date.now();

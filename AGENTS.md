@@ -122,3 +122,51 @@ ui/text/      # deprecated ACP TUI (see ui/text/README.md)
 - CLI: crates/goose-cli/src/main.rs
 - UI: ui/desktop/src/main.ts
 - Agent: crates/goose/src/agents/agent.rs
+
+## Fork Maintenance (vincenzopalazzo/goose — rebase-only desktop fork)
+
+This fork stays **rebase-only** on top of `aaif-goose/goose` to keep core features in sync while shipping desktop-only extras that upstream may not take.
+
+**Goal:** Same Goose core (`crates/*`), same CLI/server, but a desktop app with additional features (e.g. in-place auto-update, fork-aware feed). Never diverge core unless required; keep changes isolated so `git rebase` stays trivial.
+
+**Setup**
+```bash
+git remote add upstream git@github.com:aaif-goose/goose.git  # or aaif-goose
+git remote add fork git@github.com:vincenzopalazzo/goose.git
+git fetch upstream
+git fetch fork
+# Primary worktrees track fork branches, but rebase onto upstream/main
+```
+
+**Weekly rebase (keeps fork fresh)**
+```bash
+git fetch upstream main
+git checkout feat/your-feature   # or main of fork if you keep a main
+git rebase upstream/main
+# resolve conflicts (prefer upstream for crates/*, keep your ui/desktop deltas)
+git push -f fork feat/your-feature
+```
+CI has `.github/workflows/weekly-rebase.yml` to open/update a rebase PR automatically. Never `git merge upstream/main` — that creates a merge commit that makes future rebases painful; always `rebase`.
+
+**Where to put fork features**
+- Prefer `ui/desktop` only: `ui/desktop/src/utils/githubUpdater.ts`, `ui/desktop/src/utils/autoUpdater.ts`, `ui/desktop/src/main.ts`, `ui/desktop/src/utils/settings.ts`.
+- Avoid touching `crates/goose`, `crates/goose-cli`, `crates/goose-server` unless the feature truly needs backend support. If you must, keep it behind a flag/build tag so upstream can ignore it.
+- Keep desktop extras small and isolated (e.g. `getUpdateCacheDir`/`pruneCache`/`isTargetWritable` are self-contained helpers). This is why the in-place updater PR is ~120 lines in 2 files.
+
+**Fork-aware auto-update (no rebuild needed after first fork build)**
+- Build-time (first fork build): `GITHUB_OWNER=vincenzopalazzo GITHUB_REPO=goose GOOSE_BUNDLE_NAME=Goose pnpm --prefix ui/desktop make` — bakes feed to your fork.
+- Runtime (after that, no rebuild): Settings → `customUpdateOwner`/`customUpdateRepo`/`customUpdateBundleName` (stored in `Settings` via `get-setting`/`set-setting`) are applied at startup in `appMain()` and on `set-setting` via `setCustomUpdateRepository()` + `githubUpdater.setCustomRepository()`. Users or you can switch feed without reinstall:
+  ```ts
+  await window.electron.setSetting('customUpdateOwner', 'vincenzopalazzo')
+  await window.electron.setSetting('customUpdateRepo', 'goose')
+  ```
+  Or set via env before first fork build and let runtime override handle drift.
+
+**Publishing fork releases**
+- Assets must match `githubUpdater` expectations: `Goose.zip` (mac arm64), `Goose_intel_mac.zip` (mac x64), `Goose-win32-x64.zip`.
+- Keep your own code-signing certs (macOS notarization/Windows). `ditto` preserves xattrs, but a new signature is still required.
+
+**Do / Don't**
+- Do: rebase often (weekly), keep desktop changes behind minimal flags, push feature branches to `fork`, open PRs against `vincenzopalazzo/goose` for fork-only features and against `aaif-goose/goose` when you want upstream to take it.
+- Don't: merge upstream with a merge commit, edit `ui/desktop/src/api` (generated), or change `Cargo.lock` manually; don't add core divergences that would make `cargo fmt`/`clippy` noisy on rebase.
+

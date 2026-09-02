@@ -1971,6 +1971,9 @@ const validSettingKeys: Set<string> = new Set([
   'seenAnnouncementIds',
   'disableAutoDownload',
   'recentModels',
+  'customUpdateOwner',
+  'customUpdateRepo',
+  'customUpdateBundleName',
 ]);
 
 ipcMain.handle('set-setting', (_event, key: SettingKey, value: unknown) => {
@@ -2001,6 +2004,16 @@ ipcMain.handle('set-setting', (_event, key: SettingKey, value: unknown) => {
 
   if (key === 'disableAutoDownload') {
     setAutoDownloadDisabled(value as boolean);
+  }
+
+  if (key === 'customUpdateOwner' || key === 'customUpdateRepo' || key === 'customUpdateBundleName') {
+    try {
+      const s = getSettings() as unknown as { customUpdateOwner?: string | null; customUpdateRepo?: string | null; customUpdateBundleName?: string | null };
+      const { setCustomUpdateRepository } = require('./utils/autoUpdater');
+      const { githubUpdater } = require('./utils/githubUpdater');
+      setCustomUpdateRepository(s.customUpdateOwner ?? null, s.customUpdateRepo ?? null);
+      githubUpdater.setCustomRepository(s.customUpdateOwner ?? null, s.customUpdateRepo ?? null, s.customUpdateBundleName ?? null);
+    } catch {}
   }
 });
 
@@ -2487,6 +2500,17 @@ async function appMain() {
       },
     });
   });
+
+  // Apply fork-aware update feed override (runtime, no rebuild needed)
+  try {
+    const s = getSettings() as Settings & { customUpdateOwner?: string | null; customUpdateRepo?: string | null; customUpdateBundleName?: string | null };
+    if (s.customUpdateOwner || s.customUpdateRepo) {
+      const { setCustomUpdateRepository } = await import('./utils/autoUpdater');
+      const { githubUpdater } = await import('./utils/githubUpdater');
+      setCustomUpdateRepository(s.customUpdateOwner ?? null, s.customUpdateRepo ?? null);
+      githubUpdater.setCustomRepository(s.customUpdateOwner ?? null, s.customUpdateRepo ?? null, s.customUpdateBundleName ?? null);
+    }
+  } catch {}
 
   // Migrate old settings format if needed (one-time migration)
   const settings = getSettings();
