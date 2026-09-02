@@ -13,6 +13,7 @@ import * as path from 'path';
 import * as fs from 'fs/promises';
 import log from './logger';
 import { githubUpdater, isInstallerManaged } from './githubUpdater';
+
 import { loadRecentDirs } from './recentDirs';
 import { errorMessage } from './conversionUtils';
 import {
@@ -23,6 +24,40 @@ import {
   trackUpdateDownloadCompleted,
   trackUpdateInstallInitiated,
 } from './analytics';
+
+let customUpdateOwner: string | null = null;
+let customUpdateRepo: string | null = null;
+
+export function setCustomUpdateRepository(owner?: string | null, repo?: string | null): void {
+  customUpdateOwner = owner?.trim() || null;
+  customUpdateRepo = repo?.trim() || null;
+  githubUpdater.setCustomRepository(customUpdateOwner, customUpdateRepo);
+  // Re-apply feed URL if updater already configured
+  tryApplyCustomFeedUrl();
+}
+
+export function getCustomUpdateRepository(): { owner: string | null; repo: string | null } {
+  return { owner: customUpdateOwner, repo: customUpdateRepo };
+}
+
+function tryApplyCustomFeedUrl(): void {
+  if (!customUpdateOwner || !customUpdateRepo) return;
+  try {
+    const provider = (autoUpdater as unknown as { provider?: unknown }).provider;
+    autoUpdater.setFeedURL({
+      provider: 'github',
+      owner: customUpdateOwner,
+      repo: customUpdateRepo,
+      releaseType: 'release',
+      ...(isInstallerManaged(app.getPath('exe')) ? { channel: 'installer' } : {}),
+    } as unknown as Parameters<typeof autoUpdater.setFeedURL>[0]);
+    log.info(
+      `autoUpdater: custom feed override -> ${customUpdateOwner}/${customUpdateRepo}${provider ? ' (provider exists)' : ' (provider not yet set)'}`
+    );
+  } catch {
+    // Feed URL is applied again in setupAutoUpdater.
+  }
+}
 
 let updateAvailable = false;
 let trayRef: Tray | null = null;
@@ -351,7 +386,13 @@ export function registerUpdateIpcHandlers() {
 }
 
 // Configure auto-updater
-export function setupAutoUpdater() {
+export function setupAutoUpdater(tray?: Tray) {
+  if (tray) {
+    trayRef = tray;
+  }
+
+  // Apply any runtime fork override before configuring feed
+  tryApplyCustomFeedUrl();
   log.info('Setting up auto-updater...');
   log.info(`Current app version: ${app.getVersion()}`);
   log.info(`Platform: ${process.platform}, Arch: ${process.arch}`);
