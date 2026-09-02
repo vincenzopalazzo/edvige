@@ -13,6 +13,37 @@ import * as path from 'path';
 import * as fs from 'fs/promises';
 import log from './logger';
 import { githubUpdater } from './githubUpdater';
+
+let customUpdateOwner: string | null = null;
+let customUpdateRepo: string | null = null;
+
+export function setCustomUpdateRepository(owner?: string | null, repo?: string | null): void {
+  customUpdateOwner = owner?.trim() || null;
+  customUpdateRepo = repo?.trim() || null;
+  githubUpdater.setCustomRepository(customUpdateOwner, customUpdateRepo);
+  // Re-apply feed URL if updater already configured
+  tryApplyCustomFeedUrl();
+}
+
+export function getCustomUpdateRepository(): { owner: string | null; repo: string | null } {
+  return { owner: customUpdateOwner, repo: customUpdateRepo };
+}
+
+function tryApplyCustomFeedUrl(): void {
+  if (!customUpdateOwner || !customUpdateRepo) return;
+  try {
+    const provider = (autoUpdater as unknown as { provider?: unknown }).provider;
+    // electron-updater's GitHubProvider uses feed URL; simplest is to set feed URL to GitHub API
+    // We keep electron-updater's existing provider but log the override; primary fallback is githubUpdater anyway.
+    autoUpdater.setFeedURL({
+      provider: 'github',
+      owner: customUpdateOwner,
+      repo: customUpdateRepo,
+    } as unknown as Parameters<typeof autoUpdater.setFeedURL>[0]);
+    // eslint-disable-next-line no-console
+    console.log(`autoUpdater: custom feed override -> ${customUpdateOwner}/${customUpdateRepo}`, provider ? '(provider exists)' : '(provider not yet set)');
+  } catch {}
+}
 import { loadRecentDirs } from './recentDirs';
 import { errorMessage } from './conversionUtils';
 import {
@@ -338,6 +369,9 @@ export function setupAutoUpdater(tray?: Tray) {
   if (tray) {
     trayRef = tray;
   }
+
+  // Apply any runtime fork override before configuring feed
+  tryApplyCustomFeedUrl();
 
   log.info('Setting up auto-updater...');
   log.info(`Current app version: ${app.getVersion()}`);
