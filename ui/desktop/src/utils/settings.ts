@@ -56,6 +56,10 @@ export interface Settings {
   seenAnnouncementIds: string[];
   recentModels: RecentModel[];
   useLegacyAgentLoop: boolean;
+  // Fork-aware update feed override (null = use built-in GITHUB_OWNER/REPO)
+  customUpdateOwner?: string | null;
+  customUpdateRepo?: string | null;
+  customUpdateBundleName?: string | null;
 }
 
 export type SettingKey = keyof Settings;
