@@ -12,6 +12,7 @@ import { useLocation } from 'react-router';
 import { defineMessages, useIntl } from '../i18n';
 import ChatInput from './ChatInput';
 import { ChatInputCard } from './ChatInputCard';
+import ActivityHeatmap from './ActivityHeatmap';
 import { ChatState } from '../types/chatState';
 import 'react-toastify/dist/ReactToastify.css';
 import { View, ViewOptions } from '../utils/navigationUtils';
@@ -219,8 +220,8 @@ export default function Hub({
   };
 
   return (
-    <div className="flex flex-col h-full min-h-0 items-center justify-center px-6 relative">
-      <div className="w-full max-w-3xl">
+    <div className="flex flex-col h-full min-h-0 items-center px-6 relative overflow-y-auto">
+      <div className="w-full max-w-2xl py-6 min-h-full flex flex-col justify-center">
         <div className="flex items-baseline gap-2 mb-1">
           <span className="text-6xl font-light text-text-primary tracking-tight tabular-nums">
             {time}
@@ -264,6 +265,8 @@ export default function Hub({
             }}
           />
         </ChatInputCard>
+
+        <ActivityHeatmap setView={setView} />
       </div>
     </div>
   );

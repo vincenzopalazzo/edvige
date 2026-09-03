@@ -173,6 +173,8 @@ import type {
   ScanRecipeRequest_unstable,
   ScanRecipeResponse_unstable,
   ScheduleRecipeRequest_unstable,
+  SessionActivityRequest_unstable,
+  SessionActivityResponse_unstable,
   SetConfigExtensionEnabledRequest_unstable,
   SetRecipeSlashCommandRequest_unstable,
   SetSessionSystemPromptRequest_unstable,
@@ -263,6 +265,7 @@ import {
   zRunScheduleNowResponse_unstable,
   zSaveRecipeResponse_unstable,
   zScanRecipeResponse_unstable,
+  zSessionActivityResponse_unstable,
   zSetToolPermissionsResponse_unstable,
   zSteerSessionResponse_unstable,
   zUpdateScheduleResponse_unstable,
@@ -443,6 +446,18 @@ export class GooseExtClient {
     return zContextReportResponse_unstable.parse(
       raw,
     ) as ContextReportResponse_unstable;
+  }
+
+  async sessionsActivity_unstable(
+    params: SessionActivityRequest_unstable,
+  ): Promise<SessionActivityResponse_unstable> {
+    const raw = await this.conn.request(
+      "_goose/unstable/sessions/activity",
+      params,
+    );
+    return zSessionActivityResponse_unstable.parse(
+      raw,
+    ) as SessionActivityResponse_unstable;
   }
 
   async configPromptsList_unstable(
