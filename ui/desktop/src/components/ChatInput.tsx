@@ -213,6 +213,7 @@ interface ChatInputProps {
   nextChatExtensionDraft?: NextChatExtensionDraft;
   onNextChatExtensionDraftChange?: (draft: NextChatExtensionDraft) => void;
   liveVoice?: ChatInputLiveVoice;
+  draftRef?: React.RefObject<string>;
 }
 
 export default function ChatInput({

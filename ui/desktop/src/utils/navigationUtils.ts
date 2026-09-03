@@ -1,5 +1,7 @@
 import type { NavigateFunction } from 'react-router';
+import type { FixedExtensionEntry } from '../components/ConfigContext';
 import type { Recipe } from '../recipe';
+import type { ExtensionConfig } from '../types/extensions';
 import { UserInput } from '../types/message';
 
 export type View =
@@ -31,6 +33,9 @@ export type ViewOptions = {
   resumeSessionId?: string;
   startLiveVoice?: boolean;
   pendingScheduleDeepLink?: string;
+  workingDir?: string;
+  extensionConfigs?: ExtensionConfig[];
+  allExtensions?: FixedExtensionEntry[];
 };
 
 export const createNavigationHandler = (navigate: NavigateFunction) => {
