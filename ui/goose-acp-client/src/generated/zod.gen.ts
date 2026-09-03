@@ -469,6 +469,44 @@ export const zDiagnosticsGetResponse_unstable = z.object({
 });
 
 /**
+ * Calendar-year session activity for the desktop heatmap.
+ */
+export const zSessionActivityRequest_unstable = z.object({
+    year: z.int().gte(1970).lte(2100).nullish()
+});
+
+export const zSessionActivitySession = z.object({
+    id: z.string(),
+    name: z.string(),
+    totalTokens: z.int(),
+    providerId: z.string().nullish(),
+    modelId: z.string().nullish()
+});
+
+export const zSessionActivityDay = z.object({
+    date: z.string(),
+    sessionCount: z.int().gte(0),
+    totalTokens: z.int(),
+    sessions: z.array(zSessionActivitySession).optional().default([])
+});
+
+export const zSessionActivityModel = z.object({
+    providerId: z.string().nullish(),
+    modelId: z.string().nullish(),
+    totalTokens: z.int(),
+    sessionCount: z.int().gte(0)
+});
+
+export const zSessionActivityResponse_unstable = z.object({
+    year: z.int(),
+    totalTokens: z.int(),
+    totalSessions: z.int().gte(0),
+    days: z.array(zSessionActivityDay).optional().default([]),
+    models: z.array(zSessionActivityModel).optional().default([])
+});
+
+/**
+ * List all available Goose prompt templates.
  * List all available goose prompt templates.
  */
 export const zListPromptsRequest_unstable = z.record(z.string(), z.unknown());
@@ -2346,6 +2384,7 @@ export const zExtRequest = z.object({
             zLiveVoiceStartRequest_unstable,
             zLiveVoiceStopRequest_unstable,
             zDiagnosticsGetRequest_unstable,
+            zSessionActivityRequest_unstable,
             zListPromptsRequest_unstable,
             zGetPromptRequest_unstable,
             zSavePromptRequest_unstable,
@@ -2463,6 +2502,7 @@ export const zExtResponse = z.union([
                 zLiveVoiceAvailabilityResponse_unstable,
                 zLiveVoiceStartResponse_unstable,
                 zDiagnosticsGetResponse_unstable,
+                zSessionActivityResponse_unstable,
                 zListPromptsResponse_unstable,
                 zGetPromptResponse_unstable,
                 zPromptOperationResponse_unstable,
