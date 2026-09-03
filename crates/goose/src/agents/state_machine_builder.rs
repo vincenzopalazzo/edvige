@@ -18,7 +18,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::agents::state_machine::{
     recipe_unsupported_message, CompactionMode, CompactionOperation, ContextRelevanceOperation,
-    DoctorOperation, ExpiredToolsOperation, FinalOutputOperation, GooseEffect, GooseExtensions,
+    DoctorOperation, OutputLimitRecoveryOperation, ExpiredToolsOperation, FinalOutputOperation, GooseEffect, GooseExtensions,
     GooseFinalOutputSchemaSource, GooseInferenceProvider, GooseInferenceRequestPreparer,
     GooseSkillSource, GooseToolApproval, InferenceRunner, McpPromptOperation, Operation,
     PlatformExtensionOperation, ProjectOperation, RecipeOperation, RetryOperation, SkillOperation,
@@ -167,6 +167,10 @@ pub(crate) fn build_state_machine(
             .with_mode(mode)
             .with_compact_command(),
         ));
+        operations.push(Arc::new(OutputLimitRecoveryOperation::new(
+            provider.clone(),
+            model_config.clone(),
+        )));
     }
     operations.extend([
         Arc::new(
@@ -237,7 +241,8 @@ pub(crate) fn build_state_machine(
     let inference_provider = Arc::new(GooseInferenceProvider::new(provider));
     let inference = Arc::new(
         InferenceRunner::new(inference_provider, model_config)
-            .with_request_preparer(Arc::new(request_preparer)),
+            .with_request_preparer(Arc::new(request_preparer))
+            .with_output_limit_recovery(!manages_own_context),
     );
     let mut steps = Vec::new();
     if crate::agents::execute_commands::slash_commands_enabled() {

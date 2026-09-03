@@ -14,6 +14,7 @@ mod ops_final_output;
 mod ops_llm;
 mod ops_mcp_prompts;
 mod ops_platform_extensions;
+mod ops_output_limit;
 mod ops_project;
 mod ops_recipe;
 mod ops_retry;
@@ -65,6 +66,7 @@ pub(super) use ops_final_output::{recipe_unsupported_message, GooseFinalOutputSc
 pub(super) use ops_llm::{GooseInferenceProvider, InferenceRunner};
 pub(super) use ops_mcp_prompts::McpPromptOperation;
 pub(super) use ops_platform_extensions::PlatformExtensionOperation;
+pub(super) use ops_output_limit::OutputLimitRecoveryOperation;
 pub(super) use ops_project::ProjectOperation;
 pub(super) use ops_recipe::RecipeOperation;
 pub(super) use ops_retry::RetryOperation;
