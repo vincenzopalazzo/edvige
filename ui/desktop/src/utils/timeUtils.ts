@@ -28,3 +28,14 @@ export function formatMessageTimestamp(timestamp?: number): string {
 
   return `${dateStr} ${timeStr}`;
 }
+
+export function formatClockDisplay(date: Date): { time: string; meridiem: string; hour: number } {
+  const hour = date.getHours();
+  const time = date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  // extract meridiem correctly
+  const parts = time.split(' ');
+  const mer = parts.length > 1 ? parts[-1] : '';
+  const t = parts[0] || time;
+  return { time: t, meridiem: mer, hour };
+}
+
