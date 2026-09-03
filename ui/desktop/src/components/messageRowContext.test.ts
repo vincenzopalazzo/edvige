@@ -228,4 +228,17 @@ describe('isModelChange', () => {
     expect(isModelChange(resolved('model-a', 'model-a-1'), requested('model-b'))).toBe(true);
     expect(isModelChange(requested('model-a'), requested('model-b'))).toBe(true);
   });
+
+  it('reuses previous row contexts when only the last text message identity changes', () => {
+    const first = message('one', 'assistant', [{ type: 'text', text: 'hello' }]);
+    const second = message('two', 'assistant', [{ type: 'text', text: 'wor' }]);
+    const initial = deriveMessageRowContexts([first, second]);
+    const nextSecond = message('two', 'assistant', [{ type: 'text', text: 'world' }]);
+    const next = deriveMessageRowContexts([first, nextSecond], {
+      messages: [first, second],
+      contexts: initial,
+    });
+
+    expect(next).toBe(initial);
+  });
 });

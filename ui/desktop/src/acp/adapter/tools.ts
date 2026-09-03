@@ -17,6 +17,7 @@ import {
   isRecord,
   messagesChange,
   rawInputToArguments,
+  rewriteMessage,
   toolIdentity,
   type ToolIdentity,
   type ToolCallState,
@@ -40,18 +41,20 @@ export function applyToolCall(state: AdapterState, update: ToolCall): AcpChatSta
   const identity = toolIdentity(update);
   const metadata = toolRequestMetadata(update, identity);
 
-  message.content.push({
-    type: 'toolRequest',
-    id: update.toolCallId,
-    toolCall: {
-      status: 'success',
-      value: {
-        name: identity.toolName ?? update.title,
-        arguments: rawInputToArguments(update.rawInput),
+  rewriteMessage(state, message, (draft) => {
+    draft.content.push({
+      type: 'toolRequest',
+      id: update.toolCallId,
+      toolCall: {
+        status: 'success',
+        value: {
+          name: identity.toolName ?? update.title,
+          arguments: rawInputToArguments(update.rawInput),
+        },
       },
-    },
-    ...(metadata ? { metadata } : {}),
-    ...(update._meta ? { _meta: update._meta } : {}),
+      ...(metadata ? { metadata } : {}),
+      ...(update._meta ? { _meta: update._meta } : {}),
+    });
   });
 
   return messagesChange(state);
@@ -79,18 +82,20 @@ export function applyToolCallUpdate(
   const identity = toolIdentity(update);
   const metadata = toolResponseMetadata(toolCallState, identity);
 
-  message.content.push({
-    type: 'toolResponse',
-    id: update.toolCallId,
-    toolResult: {
-      status: 'success',
-      value: toolResultValue(
-        toolCallState,
-        toolResultMetadata(update),
-        toolCallState.status === 'failed'
-      ),
-    },
-    ...(metadata ? { metadata } : {}),
+  rewriteMessage(state, message, (draft) => {
+    draft.content.push({
+      type: 'toolResponse',
+      id: update.toolCallId,
+      toolResult: {
+        status: 'success',
+        value: toolResultValue(
+          toolCallState,
+          toolResultMetadata(update),
+          toolCallState.status === 'failed'
+        ),
+      },
+      ...(metadata ? { metadata } : {}),
+    });
   });
 
   state.toolCallStatesById.delete(update.toolCallId);

@@ -11,7 +11,7 @@ import {
   type AcpSessionNotificationAdapter,
 } from './sessionNotificationAdapter';
 import type { ElicitationStatus } from './adapter/elicitations';
-import { cloneMessage } from './adapter/shared';
+import { cloneMessage, cloneMessagesSharingUnchanged } from './adapter/shared';
 import type { AcpElicitationRequest } from './elicitationRequests';
 import type { AcpPermissionRequest } from './permissionRequestTypes';
 
@@ -44,6 +44,7 @@ interface StoreEntry extends AcpChatSessionSnapshot {
   // in flight so per-notification reads don't deep-clone the growing message
   // array (see applyAcpSessionNotification / getSnapshot).
   lastSnapshot?: AcpChatSessionSnapshot;
+  publishedByLive?: Map<Message, Message>;
 }
 
 const initialTokenState: TokenState = {
@@ -128,10 +129,9 @@ function createAcpChatSessionStoreInternal(): AcpChatSessionStoreInternal {
     if (!entry) {
       return undefined;
     }
-    // While a session-load replay is streaming in, serve the snapshot cached
-    // by the last notify() instead of deep-cloning the growing message array
-    // on every read (getSnapshot is called per replay notification).
-    if (entry.chatState === ChatState.LoadingConversation && entry.lastSnapshot) {
+    // Reuse the snapshot produced by notify() so streaming tokens and session
+    // load don't deep-clone the transcript on every read.
+    if (entry.lastSnapshot) {
       return entry.lastSnapshot;
     }
     return snapshotFromEntry(entry);
@@ -226,7 +226,7 @@ function createAcpChatSessionStoreInternal(): AcpChatSessionStoreInternal {
     entry.progressMessage = undefined;
     // Materialize the replayed conversation in one pass (the per-notification
     // fast path above skips message copies while loading).
-    entry.messages = entry.adapter.getMessages();
+    entry.messages = publishMessages(entry, entry.adapter.getMessages());
     retainPendingLocalSteerMessageIds(entry);
     entry.chatState = entry.activePromptAttemptId ? ChatState.Streaming : ChatState.Idle;
     return notify(sessionId, entry);
@@ -245,7 +245,7 @@ function createAcpChatSessionStoreInternal(): AcpChatSessionStoreInternal {
 
   const setMessages: AcpChatSessionActions['setMessages'] = (sessionId, messages) => {
     const entry = getOrCreateEntry(sessionId);
-    entry.messages = cloneMessages(messages);
+    entry.messages = publishMessages(entry, messages);
     retainPendingLocalSteerMessageIds(entry);
     entry.adapter = createAdapterForEntry(entry);
     return notify(sessionId, entry);
@@ -651,7 +651,7 @@ function applyChatStateChanges(entry: StoreEntry, changes: AcpChatStateChange[])
   for (const change of changes) {
     switch (change.type) {
       case 'messages':
-        entry.messages = cloneMessages(change.messages);
+        entry.messages = publishMessages(entry, change.messages);
         retainPendingLocalSteerMessageIds(entry);
         break;
       case 'tokenState':
@@ -703,6 +703,8 @@ function resetReplayState(entry: StoreEntry): void {
   entry.pendingLocalSteerMessageIds.clear();
   entry.preConfirmedSteerMessageIds.clear();
   entry.adapter = createAcpSessionNotificationAdapter();
+  entry.publishedByLive = undefined;
+  entry.lastSnapshot = undefined;
 }
 
 export function acpPermissionUserInputRequestId(toolCallId: string): string {
@@ -767,9 +769,11 @@ function confirmedLocalSteerTextByMessageId(entry: StoreEntry): Map<string, stri
 function snapshotFromEntry(entry: StoreEntry): AcpChatSessionSnapshot {
   return {
     session: entry.session,
-    messages: cloneMessages(entry.messages),
-    tokenState: { ...entry.tokenState },
-    notifications: [...entry.notifications],
+    // Shallow-copy the array so later replacements don't mutate published
+    // snapshots, but keep message object identity for unchanged rows.
+    messages: entry.messages.slice(),
+    tokenState: entry.tokenState,
+    notifications: entry.notifications,
     progressMessage: entry.progressMessage,
     chatState: entry.chatState,
     sessionLoadError: entry.sessionLoadError,
@@ -779,6 +783,16 @@ function snapshotFromEntry(entry: StoreEntry): AcpChatSessionSnapshot {
   };
 }
 
-function cloneMessages(messages: Message[]): Message[] {
-  return messages.map(cloneMessage);
+function publishMessages(entry: StoreEntry, liveMessages: Message[]): Message[] {
+  const published = cloneMessagesSharingUnchanged(
+    liveMessages,
+    entry.publishedByLive,
+    entry.lastSnapshot?.messages
+  );
+  const publishedByLive = new Map<Message, Message>();
+  for (let i = 0; i < liveMessages.length; i++) {
+    publishedByLive.set(liveMessages[i], published[i]);
+  }
+  entry.publishedByLive = publishedByLive;
+  return published;
 }
