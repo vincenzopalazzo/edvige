@@ -14,13 +14,14 @@ use goose_provider_types::conversation::{
     EffectiveRole,
 };
 use goose_provider_types::errors::ProviderError;
-use goose_provider_types::model::ModelConfig;
+use goose_provider_types::model::{is_recoverable_length_stop, ModelConfig};
 use tracing_futures::Instrument;
 
 use crate::machine::MachineSession;
 use crate::operation::{
     applied, messages_since_kickoff, not_applicable, trailing_error, Emitter, Inference,
-    InferenceInput, Operation, OperationResult, CLIENT_LOG,
+    InferenceInput, Operation, OperationResult, OUTPUT_LIMIT_RECOVERY_ATTEMPTED_NOTE,
+    OUTPUT_LIMIT_RECOVERY_OPERATION, CLIENT_LOG,
 };
 use goose_provider_types::maybe_send::{MaybeSend, MaybeSync};
 
@@ -251,6 +252,7 @@ pub struct InferenceRunner<'a, S, E> {
     model_config: ModelConfig,
     request_preparer: Arc<dyn InferenceRequestPreparer<S> + 'a>,
     output: Mutex<InferenceOutput>,
+    output_limit_recovery: bool,
     effect: std::marker::PhantomData<fn() -> E>,
 }
 
@@ -347,8 +349,18 @@ impl<'a, S: MaybeSync, E: InferenceEffect> InferenceRunner<'a, S, E> {
             model_config,
             request_preparer: Arc::new(IdentityInferenceRequestPreparer),
             output: Mutex::new(InferenceOutput::default()),
+            output_limit_recovery: false,
             effect: std::marker::PhantomData,
         }
+    }
+
+    /// Enable when an output-limit recovery operation is present in the
+    /// pipeline: a recoverable length-stop marker is then hidden from the
+    /// user so the incomplete-response warning only fires once recovery is
+    /// exhausted.
+    pub fn with_output_limit_recovery(mut self, enabled: bool) -> Self {
+        self.output_limit_recovery = enabled;
+        self
     }
 
     pub fn with_request_preparer(
@@ -541,7 +553,37 @@ impl<S: MachineSession, E: InferenceEffect> Inference<S, E> for InferenceRunner<
                         _ => true,
                     });
                     drop_repeated_tool_call_thinking(&self.output().accumulator, &mut chunk);
-                    if chunk.content.is_empty() && !chunk.metadata.output_token_limit_reached {
+                    if chunk.content.is_empty() && chunk.metadata.output_token_limit_reached {
+                        let output_tokens = self
+                            .output()
+                            .usage
+                            .last()
+                            .and_then(|usage| usage.usage.output_tokens);
+                        let already_recovered = messages.iter().any(|message| {
+                            message
+                                .metadata
+                                .operation_note(
+                                    OUTPUT_LIMIT_RECOVERY_OPERATION,
+                                    OUTPUT_LIMIT_RECOVERY_ATTEMPTED_NOTE,
+                                )
+                                .is_some()
+                        });
+                        let hide_for_recovery = self.output_limit_recovery
+                            && !emit.cancel_token().is_cancelled()
+                            && !already_recovered
+                            && is_recoverable_length_stop(
+                                output_tokens,
+                                self.model_config.max_output_tokens(),
+                            );
+                        if hide_for_recovery {
+                            self.output()
+                                .accumulator
+                                .push(chunk.with_visibility(false, true));
+                        } else {
+                            attach_operation_logs(&mut chunk, &mut operation_logs);
+                            self.emit_message(chunk, emit);
+                        }
+                    } else if chunk.content.is_empty() {
                         self.output().accumulator.push(chunk);
                     } else {
                         attach_operation_logs(&mut chunk, &mut operation_logs);

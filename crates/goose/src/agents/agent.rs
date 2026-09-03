@@ -45,6 +45,7 @@ use crate::tool_inspection::ToolInspectionManager;
 use crate::tool_monitor::RepetitionInspector;
 use goose_providers::api_client::{ApiClient, AuthMethod};
 use goose_providers::errors::ProviderError;
+use goose_providers::model::is_recoverable_length_stop;
 use goose_providers::thinking::{ThinkingEffort, ThinkingEffortSupport};
 use goose_providers::typesafe::{TypeSafeProvider, TYPESAFE_DEFAULT_HOST, TYPESAFE_DEFAULT_MODEL};
 use rmcp::model::{ElicitationAction, GetPromptResult, Prompt, Tool};

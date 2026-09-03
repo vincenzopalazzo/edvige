@@ -8,6 +8,7 @@ use tokio_util::sync::CancellationToken;
 use crate::agents::extension_manager::{ExtensionLease, ExtensionManager};
 use crate::agents::state_machine::{
     BangShellOperation, CompactionOperation, DoctorOperation, EmptyResponseOperation,
+    OutputLimitRecoveryOperation,
     ExitOnErrorOperation, GooseEffect, GooseInferenceProvider, GooseInferenceRequestPreparer,
     InferenceRunner, MaxTurnsOperation, Operation, ProjectOperation, RecipeOperation,
     RemainingToolCallsOperation, RetryOperation, SkillOperation, SlashCommandOperation,
@@ -103,6 +104,10 @@ pub(crate) fn build_state_machine(
             context_limit,
             compaction_threshold,
         )));
+        operations.push(Arc::new(OutputLimitRecoveryOperation::new(
+            provider.clone(),
+            model_config.clone(),
+        )));
     }
     let remaining_operations: Vec<Arc<dyn Operation<Session, GooseEffect> + '_>> = vec![
         Arc::new(ToolPairCompactionOperation::new(
@@ -131,7 +136,8 @@ pub(crate) fn build_state_machine(
     let inference_provider = Arc::new(GooseInferenceProvider::new(provider));
     let inference = Arc::new(
         InferenceRunner::new(inference_provider, model_config)
-            .with_request_preparer(Arc::new(request_preparer)),
+            .with_request_preparer(Arc::new(request_preparer))
+            .with_output_limit_recovery(!manages_own_context),
     );
     let mut command_handlers = operations.clone();
     command_handlers.push(status_operation);

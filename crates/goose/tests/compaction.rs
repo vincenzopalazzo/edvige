@@ -14,7 +14,7 @@ use goose_providers::conversation::token_usage::{ProviderUsage, Usage};
 use goose_providers::errors::ProviderError;
 use goose_providers::model::ModelConfig;
 use rmcp::model::Tool;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use tempfile::TempDir;
 
@@ -401,6 +401,568 @@ async fn test_auto_compaction_during_reply() -> Result<()> {
             final_output
         );
     }
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_context_limit_recovery_compaction() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let agent = Agent::new();
+
+    // Setup session with messages that will push context over the limit
+    // Each message = 100 tokens, but we'll add a large one
+    let messages = vec![
+        Message::user().with_text("Hello"),
+        Message::assistant().with_text("Hi there"),
+        Message::user().with_text("Can you process this long_tool_call result?"),
+        Message::assistant().with_text("Processing..."),
+    ];
+    // Token calculation:
+    // - 3 regular messages: 300 tokens
+    // - 1 message with "long_tool_call": 100 + 15000 = 15100 tokens
+    // - Total conversation: ~15400 tokens
+    // - With system prompt (6000): 21400 tokens
+
+    let session = setup_test_session(&agent, &temp_dir, "context-limit-test", messages).await?;
+
+    // Setup mock provider with context limit of 20000 tokens
+    // Initial context (6000 system + 15400 messages = 21400) exceeds this limit
+    let provider = Arc::new(MockCompactionProvider::new());
+    agent
+        .update_provider(provider, ModelConfig::new("mock-model"), &session.id)
+        .await?;
+
+    // Try to send a message - should trigger context limit, then recover via compaction
+    let session_config = SessionConfig {
+        id: session.id.clone(),
+        schedule_id: None,
+        max_turns: None,
+        retry_config: None,
+    };
+
+    let reply_stream = agent
+        .reply(
+            Message::user().with_text("Tell me more"),
+            session_config,
+            None,
+        )
+        .await?;
+    tokio::pin!(reply_stream);
+
+    // Track compaction and context size changes
+    let mut compaction_occurred = false;
+    let mut got_response = false;
+    let mut input_tokens_after_compaction: Option<i32> = None;
+
+    while let Some(event_result) = reply_stream.next().await {
+        match event_result {
+            Ok(AgentEvent::HistoryReplaced(_)) => {
+                compaction_occurred = true;
+
+                // Capture the input tokens immediately after compaction
+                let session_after_compact = agent
+                    .config
+                    .session_manager
+                    .get_session(&session.id, true)
+                    .await?;
+                input_tokens_after_compaction = session_after_compact.usage.input_tokens;
+            }
+            Ok(AgentEvent::Message(msg)) => {
+                // Check if we got a real response (not just a notification)
+                if msg
+                    .content
+                    .iter()
+                    .any(|c| matches!(c, MessageContent::Text(_)))
+                {
+                    got_response = true;
+                }
+            }
+            Ok(_) => {}
+            Err(e) => return Err(e),
+        }
+    }
+
+    // Verify recovery occurred
+    assert!(
+        compaction_occurred,
+        "Compaction should have occurred due to context limit (>20000 tokens)"
+    );
+    assert!(
+        got_response,
+        "Should have received a response after recovery"
+    );
+
+    // Verify token counts
+    let updated_session = agent
+        .config
+        .session_manager
+        .get_session(&session.id, true)
+        .await?;
+
+    // Expected token flow:
+    // 1. Initial attempt: >20000 tokens -> Context limit exceeded
+    // 2. Compaction triggered:
+    //    - Input: system prompt + messages (including long_tool_call with 15k tokens)
+    //    - Output: 200 tokens (summary, as claimed by the mock)
+    //    - New context size: estimated tokens of the retained conversation
+    // 3. Retry with compacted context:
+    //    - Input: system prompt + summary + new message
+    //    - Output: 100 tokens (response)
+
+    // Verify that current input context is dramatically reduced after compaction
+    let tokens_after =
+        input_tokens_after_compaction.expect("Should have captured tokens after compaction");
+
+    // Before: system (6000) + long_tool_call messages (~15,400) = 21,400 (exceeded limit!)
+    assert!(
+        tokens_after > 0 && tokens_after < 200,
+        "Input tokens after compaction should be the estimated retained context (under the mock's claimed 200). Got: {}",
+        tokens_after
+    );
+
+    // The compacted context is now well under the 20k limit
+    assert!(
+        tokens_after < 20000,
+        "Compacted context should be under 20k limit. Got: {}",
+        tokens_after
+    );
+
+    // Check the final token state after recovery
+    // Note: The session state reflects the RETRY call (after compaction),
+    // which only sees agent-visible messages (summary + continuation + user message)
+    let final_input = updated_session.usage.input_tokens.unwrap();
+    let final_output = updated_session.usage.output_tokens;
+    let final_total = updated_session.usage.total_tokens.unwrap();
+
+    // After compaction, the retry only sees agent-visible messages:
+    // Input: system (6000) + summary (~100) + continuation (~100) + user message (~100) = ~6300
+    // Output: 200 (mock detects "summarized" in continuation as compaction)
+    // Total: ~6500
+    assert!(
+        (6000..=6600).contains(&final_input),
+        "Final input should reflect retry with agent-visible messages (~6300). Got: {}",
+        final_input
+    );
+
+    assert_eq!(
+        final_output,
+        Some(200),
+        "Final output should be 200 (mock detects continuation as compaction). Got: {:?}",
+        final_output
+    );
+
+    assert_eq!(
+        final_total,
+        final_input + final_output.unwrap(),
+        "Final total should equal input + output"
+    );
+
+    // Accumulated tokens should include all operations:
+    // - Initial: 1000
+    // - Compaction: ~6400 input (mock uses system_prompt.len()/4) + 200 output = ~6600
+    // - Reply: ~6500 input + 200 output = ~6700
+    // Total: 1000 + 6600 + 6700 = ~14300
+    let accumulated = updated_session.accumulated_usage.total_tokens.unwrap();
+    assert!(
+        (13000..=16000).contains(&accumulated),
+        "Accumulated should be ~14300 (initial + compaction + reply). Got: {}",
+        accumulated
+    );
+
+    // Verify that the conversation was compacted
+    let updated_conversation = updated_session
+        .conversation
+        .expect("Session should have conversation");
+    assert_conversation_compacted(&updated_conversation);
+
+    Ok(())
+}
+
+/// Mock provider whose replies end with a bare output-token-limit marker and
+/// low usage (a recoverable length stop) until `limited_replies` is
+/// exhausted. Compaction prompts get a summary; later replies complete
+/// normally.
+struct OutputLimitRecoveryProvider {
+    reply_calls: Arc<AtomicUsize>,
+    compaction_calls: Arc<AtomicUsize>,
+    limited_replies: usize,
+}
+
+impl OutputLimitRecoveryProvider {
+    fn new(limited_replies: usize) -> Self {
+        Self {
+            reply_calls: Arc::new(AtomicUsize::new(0)),
+            compaction_calls: Arc::new(AtomicUsize::new(0)),
+            limited_replies,
+        }
+    }
+}
+
+#[async_trait]
+impl Provider for OutputLimitRecoveryProvider {
+    async fn stream(
+        &self,
+        _model_config: &ModelConfig,
+        _system_prompt: &str,
+        messages: &[Message],
+        _tools: &[Tool],
+    ) -> Result<MessageStream, ProviderError> {
+        let has_text = |needle: &str| {
+            messages.iter().any(|msg| {
+                msg.content.iter().any(|content| {
+                    if let MessageContent::Text(text) = content {
+                        text.text.to_lowercase().contains(needle)
+                    } else {
+                        false
+                    }
+                })
+            })
+        };
+
+        if has_text("generate a short title") {
+            let message = Message::assistant().with_text("mock session title");
+            let usage = ProviderUsage::new(
+                "mock-model".to_string(),
+                Usage::new(Some(100), Some(10), Some(110)),
+            );
+            return Ok(stream_from_single_message(message, usage));
+        }
+
+        if has_text("please summarize the conversation history") {
+            self.compaction_calls.fetch_add(1, Ordering::SeqCst);
+            let message = Message::assistant().with_text("<mock summary of conversation>");
+            let usage = ProviderUsage::new(
+                "mock-model".to_string(),
+                Usage::new(Some(500), Some(200), Some(700)),
+            );
+            return Ok(stream_from_single_message(message, usage));
+        }
+
+        let call = self.reply_calls.fetch_add(1, Ordering::SeqCst) + 1;
+        if call <= self.limited_replies {
+            let partial = Message::assistant()
+                .with_text("Partial answer")
+                .with_id("ol-partial");
+            let mut marker = Message::assistant().with_id("ol-marker");
+            marker.metadata.output_token_limit_reached = true;
+            let usage = ProviderUsage::new(
+                "mock-model".to_string(),
+                Usage::new(Some(500), Some(100), Some(600)),
+            );
+            return Ok(Box::pin(futures::stream::iter(vec![
+                Ok((Some(partial), None)),
+                Ok((Some(marker), Some(usage))),
+            ])));
+        }
+
+        let message = Message::assistant().with_text("Recovered response.");
+        let usage = ProviderUsage::new(
+            "mock-model".to_string(),
+            Usage::new(Some(500), Some(50), Some(550)),
+        );
+        Ok(stream_from_single_message(message, usage))
+    }
+
+    fn get_name(&self) -> &str {
+        "output-limit-recovery"
+    }
+}
+
+#[tokio::test]
+async fn test_output_limit_recovery_compacts_and_completes() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let agent = Agent::new();
+    let session = setup_test_session(
+        &agent,
+        &temp_dir,
+        "output-limit-recovery-test",
+        vec![Message::user().with_text("Hello")],
+    )
+    .await?;
+
+    let provider = Arc::new(OutputLimitRecoveryProvider::new(1));
+    agent
+        .update_provider(
+            provider.clone(),
+            ModelConfig::new("mock-model"),
+            &session.id,
+        )
+        .await?;
+
+    let session_config = SessionConfig {
+        id: session.id.clone(),
+        schedule_id: None,
+        max_turns: None,
+        retry_config: None,
+    };
+
+    let reply_stream = agent
+        .reply(
+            Message::user().with_text("Tell me more"),
+            session_config,
+            None,
+        )
+        .await?;
+    tokio::pin!(reply_stream);
+
+    let mut compaction_occurred = false;
+    let mut marker_surfaced = false;
+    let mut got_recovered_response = false;
+
+    while let Some(event_result) = reply_stream.next().await {
+        match event_result {
+            Ok(AgentEvent::HistoryReplaced(_)) => compaction_occurred = true,
+            Ok(AgentEvent::Message(msg)) => {
+                marker_surfaced |= msg.metadata.output_token_limit_reached;
+                got_recovered_response |= msg.as_concat_text().contains("Recovered response.");
+            }
+            Ok(_) => {}
+            Err(e) => return Err(e),
+        }
+    }
+
+    assert!(
+        compaction_occurred,
+        "recoverable length stop should compact"
+    );
+    assert!(
+        !marker_surfaced,
+        "recoverable marker must not surface the warning"
+    );
+    assert!(
+        got_recovered_response,
+        "turn should complete after compact-and-retry"
+    );
+    assert_eq!(provider.compaction_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(provider.reply_calls.load(Ordering::SeqCst), 2);
+
+    let updated = agent
+        .config
+        .session_manager
+        .get_session(&session.id, true)
+        .await?;
+    let conversation = updated.conversation.expect("session conversation");
+    assert!(!conversation.messages().iter().any(|message| {
+        message.metadata.output_token_limit_reached && message.is_user_visible()
+    }));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_output_limit_recovery_second_hit_warns() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let agent = Agent::new();
+    let session = setup_test_session(
+        &agent,
+        &temp_dir,
+        "output-limit-second-hit-test",
+        vec![Message::user().with_text("Hello")],
+    )
+    .await?;
+
+    let provider = Arc::new(OutputLimitRecoveryProvider::new(usize::MAX));
+    agent
+        .update_provider(
+            provider.clone(),
+            ModelConfig::new("mock-model"),
+            &session.id,
+        )
+        .await?;
+
+    let session_config = SessionConfig {
+        id: session.id.clone(),
+        schedule_id: None,
+        max_turns: None,
+        retry_config: None,
+    };
+
+    let reply_stream = agent
+        .reply(
+            Message::user().with_text("Tell me more"),
+            session_config,
+            None,
+        )
+        .await?;
+    tokio::pin!(reply_stream);
+
+    let mut compactions = 0;
+    let mut visible_marker = false;
+
+    while let Some(event_result) = reply_stream.next().await {
+        match event_result {
+            Ok(AgentEvent::HistoryReplaced(_)) => compactions += 1,
+            Ok(AgentEvent::Message(msg)) => {
+                visible_marker |= msg.metadata.output_token_limit_reached && msg.is_user_visible();
+            }
+            Ok(_) => {}
+            Err(e) => return Err(e),
+        }
+    }
+
+    assert_eq!(compactions, 1, "only one compact-and-retry is allowed");
+    assert!(
+        visible_marker,
+        "second length stop must surface the incomplete-response warning"
+    );
+    assert_eq!(provider.compaction_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(provider.reply_calls.load(Ordering::SeqCst), 2);
+
+    Ok(())
+}
+
+/// Mock provider whose first reply contains a tool call truncated by the
+/// output token limit (unparseable arguments) followed by a normal reply.
+struct TruncatedToolCallProvider {
+    reply_calls: Arc<AtomicUsize>,
+}
+
+#[async_trait]
+impl Provider for TruncatedToolCallProvider {
+    async fn stream(
+        &self,
+        _model_config: &ModelConfig,
+        _system_prompt: &str,
+        messages: &[Message],
+        _tools: &[Tool],
+    ) -> Result<MessageStream, ProviderError> {
+        let has_text = |needle: &str| {
+            messages.iter().any(|msg| {
+                msg.content.iter().any(|content| {
+                    if let MessageContent::Text(text) = content {
+                        text.text.to_lowercase().contains(needle)
+                    } else {
+                        false
+                    }
+                })
+            })
+        };
+
+        if has_text("generate a short title") {
+            let message = Message::assistant().with_text("mock session title");
+            let usage = ProviderUsage::new(
+                "mock-model".to_string(),
+                Usage::new(Some(100), Some(10), Some(110)),
+            );
+            return Ok(stream_from_single_message(message, usage));
+        }
+
+        let call = self.reply_calls.fetch_add(1, Ordering::SeqCst) + 1;
+        if call == 1 {
+            let mut message = Message::assistant().with_tool_request(
+                "truncated-call",
+                Err(rmcp::model::ErrorData::new(
+                    rmcp::model::ErrorCode::INTERNAL_ERROR,
+                    "tool call arguments were truncated by the output token limit",
+                    None,
+                )),
+            );
+            message.metadata.output_token_limit_reached = true;
+            let usage = ProviderUsage::new(
+                "mock-model".to_string(),
+                Usage::new(Some(500), Some(100), Some(600)),
+            );
+            return Ok(stream_from_single_message(message, usage));
+        }
+
+        let message = Message::assistant().with_text("Re-issued the call cleanly.");
+        let usage = ProviderUsage::new(
+            "mock-model".to_string(),
+            Usage::new(Some(500), Some(50), Some(550)),
+        );
+        Ok(stream_from_single_message(message, usage))
+    }
+
+    fn get_name(&self) -> &str {
+        "truncated-tool-call"
+    }
+}
+
+#[tokio::test]
+async fn test_truncated_tool_calls_fail_and_continue() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let agent = Agent::new();
+    let session = setup_test_session(
+        &agent,
+        &temp_dir,
+        "truncated-tool-call-test",
+        vec![Message::user().with_text("Hello")],
+    )
+    .await?;
+
+    let provider = Arc::new(TruncatedToolCallProvider {
+        reply_calls: Arc::new(AtomicUsize::new(0)),
+    });
+    agent
+        .update_provider(
+            provider.clone(),
+            ModelConfig::new("mock-model"),
+            &session.id,
+        )
+        .await?;
+
+    let session_config = SessionConfig {
+        id: session.id.clone(),
+        schedule_id: None,
+        max_turns: None,
+        retry_config: None,
+    };
+
+    let reply_stream = agent
+        .reply(
+            Message::user().with_text("Tell me more"),
+            session_config,
+            None,
+        )
+        .await?;
+    tokio::pin!(reply_stream);
+
+    let mut got_final_response = false;
+    while let Some(event_result) = reply_stream.next().await {
+        match event_result {
+            Ok(AgentEvent::Message(msg)) => {
+                got_final_response |= msg.as_concat_text().contains("Re-issued the call cleanly.");
+            }
+            Ok(_) => {}
+            Err(e) => return Err(e),
+        }
+    }
+
+    assert!(
+        got_final_response,
+        "turn should continue after a truncated tool call"
+    );
+    assert_eq!(provider.reply_calls.load(Ordering::SeqCst), 2);
+
+    let updated = agent
+        .config
+        .session_manager
+        .get_session(&session.id, true)
+        .await?;
+    let conversation = updated.conversation.expect("session conversation");
+    let tool_response = conversation
+        .messages()
+        .iter()
+        .flat_map(|message| message.content.iter())
+        .filter_map(|content| content.as_tool_response())
+        .find(|response| response.id == "truncated-call")
+        .expect("truncated tool call should get a tool response");
+    let failed = match &tool_response.tool_result {
+        Err(error) => error.message.contains("truncated"),
+        Ok(result) => {
+            result.is_error == Some(true)
+                && result.content.iter().any(|content| {
+                    content
+                        .as_text()
+                        .is_some_and(|text| text.text.contains("truncated"))
+                })
+        }
+    };
+    assert!(
+        failed,
+        "truncated tool call must surface an error, not execute"
+    );
 
     Ok(())
 }
