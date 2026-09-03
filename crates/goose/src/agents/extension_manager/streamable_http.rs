@@ -24,7 +24,10 @@ use tracing::warn;
 use super::super::extension::{ExtensionError, ExtensionResult};
 use super::super::mcp_client::{ConnectContext, McpClient, McpClientTrait};
 use super::super::tool_execution::ToolCallContext;
-use crate::oauth::{oauth_flow, oauth_flow_with_challenge, StaticOAuthClientConfig};
+use crate::oauth::{
+    oauth_flow, oauth_flow_with_challenge, GooseCredentialStore, StaticOAuthClientConfig,
+};
+use oauth2::TokenResponse;
 
 /// Retry with OAuth for typed auth challenges and wrapped bare HTTP 401 responses.
 fn is_oauth_auth_failure(err: &ClientInitializeError) -> bool {
@@ -300,10 +303,25 @@ struct OAuthStepUpClient {
     params: tokio::sync::RwLock<ConnectParams>,
     step_up_lock: tokio::sync::Mutex<()>,
     notification_subscribers: Arc<Mutex<Vec<mpsc::Sender<ServerNotification>>>>,
+    presented_access_token: tokio::sync::RwLock<Option<String>>,
+}
+
+async fn presented_access_token(name: &str) -> Option<String> {
+    GooseCredentialStore::new(name.to_string())
+        .load()
+        .await
+        .ok()
+        .flatten()
+        .and_then(|stored| stored.token_response)
+        .map(|token| token.access_token().secret().to_string())
 }
 
 impl OAuthStepUpClient {
-    async fn new(inner: McpClient, params: ConnectParams) -> Self {
+    async fn new(
+        inner: McpClient,
+        params: ConnectParams,
+        presented_access_token: Option<String>,
+    ) -> Self {
         let server_info = inner.get_info().cloned();
         let notification_subscribers = Arc::new(Mutex::new(Vec::new()));
         Self::forward_notifications(&inner, notification_subscribers.clone()).await;
@@ -313,6 +331,7 @@ impl OAuthStepUpClient {
             params: tokio::sync::RwLock::new(params),
             step_up_lock: tokio::sync::Mutex::new(()),
             notification_subscribers,
+            presented_access_token: tokio::sync::RwLock::new(presented_access_token),
         }
     }
 
@@ -334,11 +353,13 @@ impl OAuthStepUpClient {
         challenge: String,
     ) -> Result<(), crate::agents::mcp_client::Error> {
         let params = self.params.read().await;
+        let rejected_access_token = self.presented_access_token.read().await.clone();
         let auth_manager = oauth_flow_with_challenge(
             &params.uri,
             &params.name,
             params.static_oauth_client.as_ref(),
             Some(challenge),
+            rejected_access_token.as_deref(),
         )
         .await
         .map_err(|e| {
@@ -364,6 +385,7 @@ impl OAuthStepUpClient {
         })?;
         Self::forward_notifications(&client, self.notification_subscribers.clone()).await;
         *self.inner.write().await = client;
+        *self.presented_access_token.write().await = presented_access_token(&params.name).await;
         Ok(())
     }
 
@@ -589,7 +611,10 @@ pub(super) async fn connect(
             Ok(auth_manager) => {
                 match connect_with_auth(auth_manager, uri, headers, ctx.clone()).await {
                     Ok(client) => {
-                        return Ok(Box::new(OAuthStepUpClient::new(client, params).await));
+                        let presented = presented_access_token(name).await;
+                        return Ok(Box::new(
+                            OAuthStepUpClient::new(client, params, presented).await,
+                        ));
                     }
                     Err(error) => {
                         if !clear_credentials_on_post_refresh_auth_failure(
@@ -629,14 +654,18 @@ pub(super) async fn connect(
     .await;
 
     if !should_attempt_oauth_fallback(&client_res) {
-        return Ok(Box::new(OAuthStepUpClient::new(client_res?, params).await));
+        return Ok(Box::new(OAuthStepUpClient::new(client_res?, params, None).await));
     }
 
     let challenge = auth_challenge_from_result(&client_res);
-    match oauth_flow_with_challenge(uri, name, static_oauth_client.as_ref(), challenge).await {
+    match oauth_flow_with_challenge(uri, name, static_oauth_client.as_ref(), challenge, None).await
+    {
         Ok(auth_manager) => {
             let client = connect_with_auth(auth_manager, uri, headers, ctx.clone()).await?;
-            Ok(Box::new(OAuthStepUpClient::new(client, params).await))
+            let presented = presented_access_token(name).await;
+            Ok(Box::new(
+                OAuthStepUpClient::new(client, params, presented).await,
+            ))
         }
         Err(e) => {
             warn!(
