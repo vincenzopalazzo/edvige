@@ -3837,6 +3837,9 @@
   "sessions.acpBadge": {
     "defaultMessage": "ACP"
   },
+  "sessions.action.archive": {
+    "defaultMessage": "Oturumu arşivle"
+  },
   "sessions.action.delete": {
     "defaultMessage": "Oturumu sil"
   },
@@ -3947,6 +3950,12 @@
   },
   "sessions.shareNostr.title": {
     "defaultMessage": "Şifreli Nostr Paylaşım Bağlantısı"
+  },
+  "sessions.toast.archiveFailed": {
+    "defaultMessage": "\"{name}\" oturumu arşivlenemedi: {error}"
+  },
+  "sessions.toast.archived": {
+    "defaultMessage": "\"{name}\" oturumu arşivlendi"
   },
   "sessions.toast.copied": {
     "defaultMessage": "Panoya kopyalandı"

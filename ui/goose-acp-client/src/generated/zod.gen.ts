@@ -1687,6 +1687,14 @@ export const zUnarchiveSessionRequest_unstable = z.object({
 });
 
 /**
+ * Set the lifecycle status of a session (active, archived, completed, superseded, pending, rejected).
+ */
+export const zSetSessionStatusRequest_unstable = z.object({
+    sessionId: z.string(),
+    status: z.string()
+});
+
+/**
  * The type of source entity.
  */
 export const zSourceType = z.enum([
@@ -2453,6 +2461,7 @@ export const zExtRequest = z.object({
             zRenameSessionRequest_unstable,
             zArchiveSessionRequest_unstable,
             zUnarchiveSessionRequest_unstable,
+            zSetSessionStatusRequest_unstable,
             zCreateSourceRequest_unstable,
             zListSourcesRequest_unstable,
             zListAgentMentionsRequest_unstable,
