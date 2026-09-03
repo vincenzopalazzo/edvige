@@ -170,6 +170,7 @@ import type {
   SessionActivityResponse_unstable,
   SetConfigExtensionEnabledRequest_unstable,
   SetRecipeSlashCommandRequest_unstable,
+  SetSessionStatusRequest_unstable,
   SetSessionSystemPromptRequest_unstable,
   SetToolPermissionsRequest_unstable,
   SetToolPermissionsResponse_unstable,
@@ -1106,6 +1107,12 @@ export class GooseExtClient {
     params: UnarchiveSessionRequest_unstable,
   ): Promise<void> {
     await this.conn.request("_goose/unstable/session/unarchive", params);
+  }
+
+  async sessionSetStatus_unstable(
+    params: SetSessionStatusRequest_unstable,
+  ): Promise<void> {
+    await this.conn.request("_goose/unstable/session/set-status", params);
   }
 
   async sourcesCreate_unstable(
