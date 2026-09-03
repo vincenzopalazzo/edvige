@@ -9,7 +9,6 @@ import {
   getTextAndImageContent,
   getThinkingContent,
   getToolRequests,
-  getToolResponses,
   reasoningConsumedOutputBudget,
   getToolConfirmationContent,
   getElicitationContent,
