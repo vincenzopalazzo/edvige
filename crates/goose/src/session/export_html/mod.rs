@@ -48,6 +48,7 @@ mod tests {
             name: "Greeting".to_string(),
             user_set_name: false,
             session_type: SessionType::User,
+            status: Default::default(),
             created_at: Utc::now(),
             updated_at: Utc::now(),
             extension_data: Default::default(),
