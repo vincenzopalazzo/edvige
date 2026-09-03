@@ -3839,6 +3839,9 @@
   "sessions.acpBadge": {
     "defaultMessage": "ACP"
   },
+  "sessions.action.archive": {
+    "defaultMessage": "Архивировать сеанс"
+  },
   "sessions.action.delete": {
     "defaultMessage": "Удалить сеанс"
   },
@@ -3925,6 +3928,18 @@
   },
   "sessions.searchPlaceholder": {
     "defaultMessage": "Поиск по истории..."
+  },
+  "sessions.shareNostr.description": {
+    "defaultMessage": "Любой, у кого есть эта ссылка, сможет получить и расшифровать ваш сеанс. Обращайтесь с ней как с секретом."
+  },
+  "sessions.shareNostr.title": {
+    "defaultMessage": "Зашифрованная ссылка общего доступа Nostr"
+  },
+  "sessions.toast.archiveFailed": {
+    "defaultMessage": "Не удалось архивировать сеанс «{name}»: {error}"
+  },
+  "sessions.toast.archived": {
+    "defaultMessage": "Сеанс «{name}» архивирован"
   },
   "sessions.toast.copied": {
     "defaultMessage": "Скопировано в буфер обмена"

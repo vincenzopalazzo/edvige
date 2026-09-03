@@ -239,9 +239,10 @@ impl AcpConnection {
     ) -> Result<EmptyResponse, agent_client_protocol::Error> {
         self.services
             .session_manager
-            .update(&req.session_id)
-            .archived_at(Some(chrono::Utc::now()))
-            .apply()
+            .set_session_status(
+                &req.session_id,
+                crate::session::session_manager::SessionStatus::Archived,
+            )
             .await
             .internal_err()?;
         self.services.release_session(&req.session_id).await;
@@ -254,11 +255,36 @@ impl AcpConnection {
     ) -> Result<EmptyResponse, agent_client_protocol::Error> {
         self.services
             .session_manager
-            .update(&req.session_id)
-            .archived_at(None)
-            .apply()
+            .set_session_status(
+                &req.session_id,
+                crate::session::session_manager::SessionStatus::Active,
+            )
             .await
             .internal_err()?;
+        Ok(EmptyResponse {})
+    }
+
+    pub(super) async fn on_set_session_status(
+        &self,
+        req: SetSessionStatusRequest,
+    ) -> Result<EmptyResponse, agent_client_protocol::Error> {
+        let status: crate::session::session_manager::SessionStatus =
+            req.status.parse().map_err(|_| {
+                agent_client_protocol::Error::invalid_params()
+                    .data("status must be one of: active, archived, completed, superseded, pending, rejected")
+            })?;
+        self.services
+            .session_manager
+            .set_session_status(&req.session_id, status)
+            .await
+            .internal_err()?;
+        if !matches!(
+            status,
+            crate::session::session_manager::SessionStatus::Active
+                | crate::session::session_manager::SessionStatus::Pending
+        ) {
+            self.services.release_session(&req.session_id).await;
+        }
         Ok(EmptyResponse {})
     }
 }

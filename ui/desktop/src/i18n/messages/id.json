@@ -3839,6 +3839,9 @@
   "sessions.acpBadge": {
     "defaultMessage": "ACP"
   },
+  "sessions.action.archive": {
+    "defaultMessage": "Arsipkan sesi"
+  },
   "sessions.action.delete": {
     "defaultMessage": "Hapus sesi"
   },
@@ -3925,6 +3928,18 @@
   },
   "sessions.searchPlaceholder": {
     "defaultMessage": "Cari riwayat..."
+  },
+  "sessions.shareNostr.description": {
+    "defaultMessage": "Siapa pun yang memiliki tautan ini dapat mengambil dan mendekripsi sesi. Perlakukan seperti rahasia."
+  },
+  "sessions.shareNostr.title": {
+    "defaultMessage": "Tautan Berbagi Nostr Terenkripsi"
+  },
+  "sessions.toast.archiveFailed": {
+    "defaultMessage": "Gagal mengarsipkan sesi \"{name}\": {error}"
+  },
+  "sessions.toast.archived": {
+    "defaultMessage": "Sesi \"{name}\" berhasil diarsipkan"
   },
   "sessions.toast.copied": {
     "defaultMessage": "Disalin ke papan klip"

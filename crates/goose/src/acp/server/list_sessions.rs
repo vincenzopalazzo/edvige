@@ -210,6 +210,7 @@ impl AcpConnection {
             .session_manager
             .list_sessions_paged(SessionListPageQuery {
                 filters: SessionListFilters {
+                    include_archived: false,
                     types: Some(&session_types),
                     working_dir: cwd,
                     keyword: keyword.as_deref(),
