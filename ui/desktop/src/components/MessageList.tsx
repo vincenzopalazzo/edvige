@@ -72,6 +72,8 @@ interface MessageRowProps {
   isStreaming: boolean;
   isUser: boolean;
   message: Message;
+  messageIndex: number;
+  messages: Message[];
   modelChangeMessage: string | null;
   onMessageUpdate?: (
     messageId: string,
@@ -94,6 +96,8 @@ function MessageRowComponent({
   isStreaming,
   isUser,
   message,
+  messageIndex,
+  messages,
   modelChangeMessage,
   onMessageUpdate,
   rowContext,
@@ -142,6 +146,8 @@ function MessageRowComponent({
             toolStates={rowContext.toolStates}
             toolNotifications={toolNotifications}
             toolConfirmationShownInline={rowContext.toolConfirmationShownInline}
+            messages={messages}
+            messageIndex={messageIndex}
             append={append}
             isStreaming={isStreaming}
             submitElicitationResponse={submitElicitationResponse}
@@ -291,6 +297,8 @@ export default function MessageList({
         }
         isUser={isUser}
         message={message}
+        messageIndex={index}
+        messages={messages}
         modelChangeMessage={modelChangeMessage}
         onMessageUpdate={onMessageUpdate}
         rowContext={rowContext}
