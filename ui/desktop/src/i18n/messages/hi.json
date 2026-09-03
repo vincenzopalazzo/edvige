@@ -3839,6 +3839,9 @@
   "sessions.acpBadge": {
     "defaultMessage": "ACP"
   },
+  "sessions.action.archive": {
+    "defaultMessage": "सत्र संग्रहीत करें"
+  },
   "sessions.action.delete": {
     "defaultMessage": "सत्र हटाएँ"
   },
@@ -3925,6 +3928,18 @@
   },
   "sessions.searchPlaceholder": {
     "defaultMessage": "खोज इतिहास..."
+  },
+  "sessions.shareNostr.description": {
+    "defaultMessage": "इस लिंक वाला कोई भी व्यक्ति सत्र को ला सकता है और डिक्रिप्ट कर सकता है। इसे एक रहस्य की तरह समझो."
+  },
+  "sessions.shareNostr.title": {
+    "defaultMessage": "एन्क्रिप्टेड नोस्ट्र शेयर लिंक"
+  },
+  "sessions.toast.archiveFailed": {
+    "defaultMessage": "सत्र \"{name}\" संग्रहीत करने में विफल: {error}"
+  },
+  "sessions.toast.archived": {
+    "defaultMessage": "सत्र \"{name}\" संग्रहीत किया गया"
   },
   "sessions.toast.copied": {
     "defaultMessage": "क्लिपबोर्ड पर कॉपी किया गया"

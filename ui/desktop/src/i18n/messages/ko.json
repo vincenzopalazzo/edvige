@@ -3839,6 +3839,9 @@
   "sessions.acpBadge": {
     "defaultMessage": "ACP"
   },
+  "sessions.action.archive": {
+    "defaultMessage": "세션 보관"
+  },
   "sessions.action.delete": {
     "defaultMessage": "세션 삭제"
   },
@@ -3925,6 +3928,18 @@
   },
   "sessions.searchPlaceholder": {
     "defaultMessage": "기록 검색..."
+  },
+  "sessions.shareNostr.description": {
+    "defaultMessage": "이 링크가 있는 사람은 누구나 세션을 가져오고 복호화할 수 있습니다. 비밀처럼 다루세요."
+  },
+  "sessions.shareNostr.title": {
+    "defaultMessage": "암호화된 Nostr 공유 링크"
+  },
+  "sessions.toast.archiveFailed": {
+    "defaultMessage": "세션 \"{name}\" 보관 실패: {error}"
+  },
+  "sessions.toast.archived": {
+    "defaultMessage": "세션 \"{name}\"이(가) 보관되었습니다."
   },
   "sessions.toast.copied": {
     "defaultMessage": "클립보드에 복사됨"

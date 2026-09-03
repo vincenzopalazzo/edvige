@@ -3839,6 +3839,9 @@
   "sessions.acpBadge": {
     "defaultMessage": "ACP"
   },
+  "sessions.action.archive": {
+    "defaultMessage": "Sitzung archivieren"
+  },
   "sessions.action.delete": {
     "defaultMessage": "Sitzung löschen"
   },
@@ -3925,6 +3928,18 @@
   },
   "sessions.searchPlaceholder": {
     "defaultMessage": "Verlauf durchsuchen..."
+  },
+  "sessions.shareNostr.description": {
+    "defaultMessage": "Jeder mit diesem Link kann die Sitzung abrufen und entschlüsseln. Behandeln Sie ihn wie ein Geheimnis."
+  },
+  "sessions.shareNostr.title": {
+    "defaultMessage": "Verschlüsselter Nostr-Freigabelink"
+  },
+  "sessions.toast.archiveFailed": {
+    "defaultMessage": "Sitzung \"{name}\" konnte nicht archiviert werden: {error}"
+  },
+  "sessions.toast.archived": {
+    "defaultMessage": "Sitzung \"{name}\" archiviert"
   },
   "sessions.toast.copied": {
     "defaultMessage": "In die Zwischenablage kopiert"

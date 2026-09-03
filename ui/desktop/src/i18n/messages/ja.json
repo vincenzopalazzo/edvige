@@ -3839,6 +3839,9 @@
   "sessions.acpBadge": {
     "defaultMessage": "ACP"
   },
+  "sessions.action.archive": {
+    "defaultMessage": "セッションをアーカイブ"
+  },
   "sessions.action.delete": {
     "defaultMessage": "セッションを削除"
   },
@@ -3925,6 +3928,18 @@
   },
   "sessions.searchPlaceholder": {
     "defaultMessage": "履歴を検索..."
+  },
+  "sessions.shareNostr.description": {
+    "defaultMessage": "このリンクを持つ人は誰でもセッションを取得して復号できます。秘密情報として扱ってください。"
+  },
+  "sessions.shareNostr.title": {
+    "defaultMessage": "暗号化Nostr共有リンク"
+  },
+  "sessions.toast.archiveFailed": {
+    "defaultMessage": "セッション「{name}」をアーカイブできませんでした: {error}"
+  },
+  "sessions.toast.archived": {
+    "defaultMessage": "セッション「{name}」をアーカイブしました"
   },
   "sessions.toast.copied": {
     "defaultMessage": "クリップボードにコピーしました"

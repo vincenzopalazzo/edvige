@@ -6,6 +6,7 @@ pub mod extension_data;
 pub mod import_formats;
 mod last_message_snippet;
 mod legacy;
+pub mod pr_status;
 pub mod session_manager;
 mod session_naming;
 
