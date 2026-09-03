@@ -231,6 +231,7 @@ impl ExtensionAuth for GooseAuth {
             &name.to_string(),
             static_client,
             challenge,
+            None,
         )
         .await
     }
