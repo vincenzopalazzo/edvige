@@ -255,6 +255,10 @@ jobs:
         shell: bash
         env:
           ELECTRON_PLATFORM: win32
+          ELECTRON_ARCH: x64
+          GITHUB_OWNER: ${{ github.repository_owner }}
+          GITHUB_REPO: ${{ github.event.repository.name }}
+          GOOSE_BUNDLE_NAME: Goose
         run: |
           cd ui/desktop
           pnpm install --frozen-lockfile

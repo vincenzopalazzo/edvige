@@ -26,11 +26,13 @@ release-binary:
     cargo build --release -p goose-cli --bin goose
     @just copy-binary
 
-# Build Windows executable on a Windows host
+# Build Windows executable. MSVC goose.exe still needs a Windows host;
+# the desktop zip can be packaged on any OS via `just make-ui-windows`.
 [unix]
 release-windows:
-    @echo "just release-windows requires a Windows host because Goose Windows releases build the MSVC target. Use .github/workflows/bundle-windows.yml for CI builds."
-    @exit 1
+    @echo "Native Windows goose.exe still requires MSVC (Windows host or CI)."
+    @echo "To package Goose.exe from this machine, run: just make-ui-windows"
+    @echo "That reuses GOOSE_WINDOWS_BINARY, a local MSVC build, or downloads goose.exe from GitHub."
 
 [windows]
 release-windows:
@@ -65,11 +67,17 @@ copy-binary-intel:
         exit 1; \
     fi
 
-# Copy Windows binary command on a Windows host
+# Copy Windows binary when an MSVC build is already present.
 [unix]
 copy-binary-windows:
-    @echo "just copy-binary-windows requires a Windows host because it copies the MSVC build output."
-    @exit 1
+    @if [ -f ./target/x86_64-pc-windows-msvc/release/goose.exe ]; then \
+        echo "Copying Windows binary to ui/desktop/src/bin..."; \
+        mkdir -p ./ui/desktop/src/bin; \
+        rm -f ./ui/desktop/src/bin/goosed.exe; \
+        cp -f ./target/x86_64-pc-windows-msvc/release/goose.exe ./ui/desktop/src/bin/; \
+    else \
+        echo "No local MSVC goose.exe; bundle-windows.js will download one if needed."; \
+    fi
 
 [windows]
 copy-binary-windows:
@@ -198,17 +206,19 @@ make-ui:
     @just release-binary
     cd ui/desktop && pnpm run bundle:default
 
-# make GUI with latest Windows binary on a Windows host
+# Package Goose.exe / Goose-win32-x64.zip from any host.
+# Native goose.exe still comes from MSVC CI or GOOSE_WINDOWS_BINARY;
+# Electron's Windows runtime is downloaded by Electron Forge.
 [unix]
 make-ui-windows:
-    @echo "just make-ui-windows requires a Windows host because Goose Windows releases build the MSVC target. Use .github/workflows/bundle-windows.yml for CI builds."
-    @exit 1
+    @just copy-binary-windows
+    cd ui/desktop && pnpm install && pnpm run bundle:windows
 
 [windows]
 make-ui-windows:
     @just release-windows
     @just copy-binary-windows
-    @powershell.exe -NoProfile -ExecutionPolicy Bypass -Command 'Set-Location ui/desktop; $env:ELECTRON_PLATFORM="win32"; node scripts/prepare-platform-binaries.js; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; pnpm run make --platform=win32 --arch=x64; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; Write-Host "Windows package build complete!"'
+    cd ui/desktop && pnpm install && pnpm run bundle:windows
 
 # make GUI with latest binary
 make-ui-intel:

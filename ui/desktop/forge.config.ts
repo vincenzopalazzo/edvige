@@ -78,7 +78,7 @@ module.exports = {
       name: '@electron-forge/maker-zip',
       platforms: ['darwin', 'win32', 'linux'],
       config: {
-        arch: process.env.ELECTRON_ARCH === 'x64' ? ['x64'] : ['arm64'],
+        ...(process.env.ELECTRON_ARCH ? { arch: [process.env.ELECTRON_ARCH] } : {}),
         options: {
           icon: 'src/images/icon.ico',
         },

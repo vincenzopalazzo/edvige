@@ -162,6 +162,11 @@ CI has `.github/workflows/weekly-rebase.yml` to open/update a rebase PR automati
   ```
   Or set via env before first fork build and let runtime override handle drift.
 
+**Windows desktop zip (any host)**
+- `just make-ui-windows` / `pnpm --prefix ui/desktop run bundle:windows` packages `Goose.exe` and `Goose-win32-x64.zip` on macOS, Linux, or Windows.
+- Electron's win32 runtime is downloaded by Forge. `goose.exe` still has to be a real Windows binary (`GOOSE_WINDOWS_BINARY`, a local MSVC build, or `goose-x86_64-pc-windows-msvc.zip` from GitHub).
+- Bake the fork feed with `GITHUB_OWNER=vincenzopalazzo GITHUB_REPO=goose GOOSE_BUNDLE_NAME=Goose`.
+
 **Publishing fork releases**
 - Assets must match `githubUpdater` expectations: `Goose.zip` (mac arm64), `Goose_intel_mac.zip` (mac x64), `Goose-win32-x64.zip`.
 - Keep your own code-signing certs (macOS notarization/Windows). `ditto` preserves xattrs, but a new signature is still required.
