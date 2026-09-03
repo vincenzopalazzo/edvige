@@ -175,3 +175,64 @@ CI has `.github/workflows/weekly-rebase.yml` to open/update a rebase PR automati
 - Do: rebase often (weekly), keep desktop changes behind minimal flags, push feature branches to `fork`, open PRs against `vincenzopalazzo/goose` for fork-only features and against `aaif-goose/goose` when you want upstream to take it.
 - Don't: merge upstream with a merge commit, edit `ui/desktop/src/api` (generated), or change `Cargo.lock` manually; don't add core divergences that would make `cargo fmt`/`clippy` noisy on rebase.
 
+## edvige-beta — Default Branch & Maintainability Rules
+
+`edvige-beta` is the default branch on `vincenzopalazzo/goose` (since 2026-09-03). `main` on the fork tracks `aaif-goose/main` for rebase only. Never make `edvige-beta` drift from `aaif/main` by more than the fork-only delta.
+
+### 1. Fork-only vs upstream — where to put code
+
+| Kind | Examples | Where | Can go upstream? |
+|---|---|---|---|
+| **Fork-only desktop** | `githubUpdater.ts`/`autoUpdater.ts` fork feed, `bundle-windows.js`, `forge.config.ts` win32 arch fix, `settings.ts` `customUpdate*` | `ui/desktop` only, behind `GITHUB_OWNER`/`customUpdate*` flags | No — keep isolated, small, rebase-clean |
+| **Upstream-able fixes** | `fix/desktop-session-ui-freeze` (#8), `ui/recipe-activities-under-chat` (#7), IDE button (#3) | same files but generic | Yes — open PR to `aaif-goose/goose` separately |
+| **Product fork features** | Catppuccin (#4), Hub heatmap (#5), Muse Code provider | `ui/desktop` + `crates/goose/src/providers` | Fork decision — propose upstream only if wanted |
+| **Carried upstream PRs** | #11448 Hub Enter, #11697 goal nudge, #11694 cron dedup, #11680 OAuth, #11551 reasoning budget | already in `vz/sonar-session-kimi` (`1.48.0+fork.pr2`) | **Do not re-PR** — they are OPEN upstream (#11448/#11697/#11694/#11680/#11551), let rebase land them |
+| **Docs** | #6 brainstorm, plans | `docs/` | Close or keep, never block release |
+
+**Rule:** Keep `crates/*` untouched unless required. If you must touch Rust, gate behind flag so `cargo fmt/clippy` stays quiet on rebase. Desktop changes stay in `ui/desktop`.
+
+### 2. PR hygiene — one concern per PR (`/git-cleanup` manual equivalent)
+
+No `git-cleanup` skill exists — do this manually per open PR:
+
+1. `gh pr view <n> --json mergeable,mergeStateStatus` — CONFLICT → rebase that branch on `edvige-beta`
+2. `git diff --name-only $(git merge-base fork/<branch> fork/edvige-beta) fork/<branch>` — >20 files or >500 lines → squash or split
+3. Retarget bases `main -> edvige-beta` for all fork PRs (`gh pr edit <n> --base edvige-beta`)
+4. Close superseded: #9 superseded by #11/edvige stack, #11 head == `edvige-beta` → close as shipped
+5. For integration branch #2 (`vz/sonar-session-kimi`, 88 commits, 177 files, +17950/-1133): **never merge wholesale** — cherry-pick/squash per feature (see §3)
+
+Keep PRs <300 lines / <15 files where possible. One squash per feature.
+
+### 3. Merge plan for the running app (`1.48.0+fork.pr2` = `a1ab5422f`) onto `edvige-beta`
+
+Running app base `4ad43df42`. `edvige-beta` = `d27c43916` (+5 fork-only commits). Overlap that will conflict: `weekly-rebase.yml`, `ui/desktop/package.json`, `src/main.ts`, `src/utils/settings.ts`.
+
+Order (low risk → high):
+
+**Phase 0** — `git checkout -B vz/merge-into-edvige fork/edvige-beta`
+**Phase 1** — `1ba8c9fc2` (#8 transcript freeze) then `5bdbbe143` (#7 recipe) — fast-forward `edvige-beta`
+**Phase 2** — `merge --squash fork/feat/catppuccin-on-fork` then `cherry-pick 3224fb397` (#3 IDE)
+**Phase 3** — `merge --squash fork/feat/hub-activity-heatmap` (#5, 20+ fixes)
+**Phase 4** — Split #2: `feat(session): lifecycle` + OAuth fixes + reasoning warnings as 3 separate squashes; Muse provider `69d73e996..a1ab5422f` as its own PR or drop; skip stamps `07d8426/255b1555`.
+
+Each phase: `cargo fmt; cargo check -p goose; pnpm -C ui/desktop typecheck` then PR `-> edvige-beta`.
+
+### 4. Rebase discipline
+
+```bash
+git fetch aaif-goose main
+git checkout edvige-beta
+git rebase aaif-goose/main   # never merge
+# prefer upstream for crates/*, keep ui/desktop deltas
+git push -f fork edvige-beta
+```
+CI `.github/workflows/weekly-rebase.yml` still rebases `main` — TODO: make it track `edvige-beta` or add `edvige-beta` to `PATCH_BRANCHES`.
+
+### 5. What to delete / keep
+
+- Keep: `bundle-windows.js`, fork feed, inplace updater — the fork value prop
+- Keep upstream-able fixes as small upstream PRs
+- Drop: version stamps, duplicate carries, docs-only branches after merge
+- Delete worktree prunables (`/private/tmp/goose-*`)
+
+
