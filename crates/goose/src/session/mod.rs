@@ -23,5 +23,6 @@ pub use extension_data::{
     EnabledExtensionsState, ExtensionData, ExtensionState, GoalState, TodoState,
 };
 pub use session_manager::{
-    Session, SessionInsights, SessionManager, SessionNameUpdate, SessionType, SessionUpdateBuilder,
+    Session, SessionActivity, SessionActivityDay, SessionActivityModel, SessionActivitySession,
+    SessionInsights, SessionManager, SessionNameUpdate, SessionType, SessionUpdateBuilder,
 };
