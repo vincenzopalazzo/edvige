@@ -218,6 +218,25 @@ describe('acpChatSessionStore', () => {
     expect(acpChatSessionStore.getSnapshot(secondSessionId)?.messages[0].id).toBe('message-2');
   });
 
+  it('keeps unchanged published messages when streaming a later chunk', () => {
+    const currentSessionId = sessionId('session-1');
+    acpChatSessionActions.setMessages(currentSessionId, [message('user-1', 'Hello')]);
+
+    const firstSnapshot = acpChatSessionActions.applyAcpSessionNotification(
+      agentMessageChunkNotification(currentSessionId, 'assistant-1', 'Hel')
+    );
+    const publishedUser = firstSnapshot.messages[0];
+    const publishedAssistant = firstSnapshot.messages[1];
+
+    const secondSnapshot = acpChatSessionActions.applyAcpSessionNotification(
+      agentMessageChunkNotification(currentSessionId, 'assistant-1', 'lo')
+    );
+
+    expect(secondSnapshot.messages[0]).toBe(publishedUser);
+    expect(secondSnapshot.messages[1]).not.toBe(publishedAssistant);
+    expect(secondSnapshot.messages[1].content).toEqual([{ type: 'text', text: 'Hello' }]);
+  });
+
   it('deletes session snapshots', () => {
     const currentSessionId = sessionId('session-1');
 

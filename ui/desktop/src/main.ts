@@ -18,6 +18,7 @@ import {
   Tray,
 } from 'electron';
 import { pathToFileURL, format as formatUrl, URLSearchParams } from 'node:url';
+import { detectIdes, isOpenTarget, openInIde, type IdeId, type OpenTarget } from './ide';
 import { Buffer } from 'node:buffer';
 import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
@@ -40,6 +41,7 @@ import { formatAppName, errorMessage, formatErrorForLogging } from './utils/conv
 import { isRetiredGooseChatApp } from './utils/retiredApps';
 import type { Settings, SettingKey } from './utils/settings';
 import { defaultSettings, getKeyboardShortcuts } from './utils/settings';
+import { isCatppuccinAccent, isThemeId } from './theme/types';
 import * as crypto from 'crypto';
 import * as yaml from 'yaml';
 import windowStateKeeper from 'electron-window-state';
@@ -1964,6 +1966,22 @@ ipcMain.handle('list-git-worktree-dirs', async (_event, dir: string) => {
   return await listGitWorktreeDirs(dir);
 });
 
+ipcMain.handle('ide-list-detected', async () => {
+  return detectIdes();
+});
+
+ipcMain.handle('ide-open', async (_event, ideId: IdeId, target: OpenTarget) => {
+  if (!isOpenTarget(target)) {
+    throw new Error('Invalid IDE open target');
+  }
+  const ides = await detectIdes();
+  const ide = ides.find((candidate) => candidate.id === ideId);
+  if (!ide) {
+    throw new Error(`IDE not detected on this machine: ${ideId}`);
+  }
+  await openInIde(ide, target);
+});
+
 ipcMain.handle('get-setting', (_event, key: SettingKey) => {
   const settings = getSettings();
   return settings[key];
@@ -1981,6 +1999,7 @@ const validSettingKeys: Set<string> = new Set([
   'keyboardShortcuts',
   'theme',
   'useSystemTheme',
+  'catppuccinAccent',
   'language',
   'responseStyle',
   'showPricing',
@@ -1990,6 +2009,7 @@ const validSettingKeys: Set<string> = new Set([
   'customUpdateOwner',
   'customUpdateRepo',
   'customUpdateBundleName',
+  'GOOSE_DEFAULT_IDE',
 ]);
 
 ipcMain.handle('set-setting', (_event, key: SettingKey, value: unknown) => {
@@ -2001,6 +2021,16 @@ ipcMain.handle('set-setting', (_event, key: SettingKey, value: unknown) => {
 
   if (key === 'language' && !isValidLanguageSetting(value)) {
     console.error(`Invalid language setting rejected: ${String(value)}`);
+    return;
+  }
+
+  if (key === 'theme' && !isThemeId(value)) {
+    console.error(`Invalid theme setting rejected: ${String(value)}`);
+    return;
+  }
+
+  if (key === 'catppuccinAccent' && !isCatppuccinAccent(value)) {
+    console.error(`Invalid Catppuccin accent rejected: ${String(value)}`);
     return;
   }
 

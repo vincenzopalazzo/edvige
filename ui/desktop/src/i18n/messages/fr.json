@@ -1438,6 +1438,36 @@
   "huggingFaceSignInPrompt.title": {
     "defaultMessage": "Hugging Face"
   },
+  "ideButton.chooseDefault": {
+    "defaultMessage": "Choose default IDE"
+  },
+  "ideButton.defaultLabel": {
+    "defaultMessage": "default"
+  },
+  "ideButton.fallbackName": {
+    "defaultMessage": "IDE"
+  },
+  "ideButton.openFailed": {
+    "defaultMessage": "Failed to open project in IDE"
+  },
+  "ideButton.openIn": {
+    "defaultMessage": "Open in {name}"
+  },
+  "ideButton.saveFailed": {
+    "defaultMessage": "Failed to save default IDE"
+  },
+  "ideSettingsSection.description": {
+    "defaultMessage": "Choose the editor Goose uses when opening your project"
+  },
+  "ideSettingsSection.notDetected": {
+    "defaultMessage": "not detected"
+  },
+  "ideSettingsSection.saveFailed": {
+    "defaultMessage": "Failed to save default IDE"
+  },
+  "ideSettingsSection.title": {
+    "defaultMessage": "Default IDE"
+  },
   "imagePreview.altText": {
     "defaultMessage": "image goose"
   },
@@ -4680,5 +4710,68 @@
   },
   "providerConfigurationModal.deviceCodeVisit": {
     "defaultMessage": "Visitez"
+  },
+  "themeSelector.builtinGroup": {
+    "defaultMessage": "Intégrés"
+  },
+  "themeSelector.catppuccinGroup": {
+    "defaultMessage": "Catppuccin"
+  },
+  "themeSelector.accent": {
+    "defaultMessage": "Accent"
+  },
+  "themeSelector.catppuccinLatte": {
+    "defaultMessage": "Latte"
+  },
+  "themeSelector.catppuccinFrappe": {
+    "defaultMessage": "Frappé"
+  },
+  "themeSelector.catppuccinMacchiato": {
+    "defaultMessage": "Macchiato"
+  },
+  "themeSelector.catppuccinMocha": {
+    "defaultMessage": "Mocha"
+  },
+  "themeSelector.accentRosewater": {
+    "defaultMessage": "Eau de rose"
+  },
+  "themeSelector.accentFlamingo": {
+    "defaultMessage": "Flamant"
+  },
+  "themeSelector.accentPink": {
+    "defaultMessage": "Rose"
+  },
+  "themeSelector.accentMauve": {
+    "defaultMessage": "Mauve"
+  },
+  "themeSelector.accentRed": {
+    "defaultMessage": "Rouge"
+  },
+  "themeSelector.accentMaroon": {
+    "defaultMessage": "Bordeaux"
+  },
+  "themeSelector.accentPeach": {
+    "defaultMessage": "Pêche"
+  },
+  "themeSelector.accentYellow": {
+    "defaultMessage": "Jaune"
+  },
+  "themeSelector.accentGreen": {
+    "defaultMessage": "Vert"
+  },
+  "themeSelector.accentTeal": {
+    "defaultMessage": "Sarcelle"
+  },
+  "themeSelector.accentSky": {
+    "defaultMessage": "Ciel"
+  },
+  "themeSelector.accentSapphire": {
+    "defaultMessage": "Saphir"
+  },
+  "themeSelector.accentBlue": {
+    "defaultMessage": "Bleu"
+  },
+  "themeSelector.accentLavender": {
+    "defaultMessage": "Lavande"
   }
 }

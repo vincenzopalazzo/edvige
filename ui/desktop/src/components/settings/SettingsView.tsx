@@ -21,6 +21,7 @@ import {
 import { useState, useEffect, useRef } from 'react';
 import ChatSettingsSection from './chat/ChatSettingsSection';
 import KeyboardShortcutsSection from './keyboard/KeyboardShortcutsSection';
+import { IdeSettingsSection } from './ide/IdeSettingsSection';
 import AuthSettingsSection from './auth/AuthSettingsSection';
 import LocalInferenceSection from './localInference/LocalInferenceSection';
 import { CONFIGURATION_ENABLED } from '../../updates';
@@ -245,6 +246,7 @@ export default function SettingsView({
                   className="mt-0 focus-visible:outline-none focus-visible:ring-0"
                 >
                   <ChatSettingsSection />
+                  <IdeSettingsSection />
                 </TabsContent>
 
                 <TabsContent

@@ -1,3 +1,6 @@
+import type { CatppuccinAccent, ThemeId } from '../theme/types';
+import { DEFAULT_CATPPUCCIN_ACCENT } from '../theme/types';
+
 export type RecentModel = {
   provider: string;
   model: string;
@@ -48,8 +51,9 @@ export interface Settings {
   keyboardShortcuts: KeyboardShortcuts;
 
   // UI preferences (migrated from localStorage)
-  theme: 'dark' | 'light' | 'aura';
+  theme: ThemeId;
   useSystemTheme: boolean;
+  catppuccinAccent: CatppuccinAccent;
   language: LanguageSetting;
   responseStyle: string;
   showPricing: boolean;
@@ -59,6 +63,7 @@ export interface Settings {
   customUpdateOwner?: string | null;
   customUpdateRepo?: string | null;
   customUpdateBundleName?: string | null;
+  GOOSE_DEFAULT_IDE: string;
 }
 
 export type SettingKey = keyof Settings;
@@ -95,11 +100,13 @@ export const defaultSettings: Settings = {
   // UI preferences
   theme: 'light',
   useSystemTheme: true,
+  catppuccinAccent: DEFAULT_CATPPUCCIN_ACCENT,
   language: 'system',
   responseStyle: 'concise',
   showPricing: true,
   seenAnnouncementIds: [],
   recentModels: [],
+  GOOSE_DEFAULT_IDE: '',
 };
 
 export function getKeyboardShortcuts(settings: Settings): KeyboardShortcuts {

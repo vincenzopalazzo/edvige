@@ -1438,6 +1438,36 @@
   "huggingFaceSignInPrompt.title": {
     "defaultMessage": "Hugging Face"
   },
+  "ideButton.chooseDefault": {
+    "defaultMessage": "Choose default IDE"
+  },
+  "ideButton.defaultLabel": {
+    "defaultMessage": "default"
+  },
+  "ideButton.fallbackName": {
+    "defaultMessage": "IDE"
+  },
+  "ideButton.openFailed": {
+    "defaultMessage": "Failed to open project in IDE"
+  },
+  "ideButton.openIn": {
+    "defaultMessage": "Open in {name}"
+  },
+  "ideButton.saveFailed": {
+    "defaultMessage": "Failed to save default IDE"
+  },
+  "ideSettingsSection.description": {
+    "defaultMessage": "Choose the editor Goose uses when opening your project"
+  },
+  "ideSettingsSection.notDetected": {
+    "defaultMessage": "not detected"
+  },
+  "ideSettingsSection.saveFailed": {
+    "defaultMessage": "Failed to save default IDE"
+  },
+  "ideSettingsSection.title": {
+    "defaultMessage": "Default IDE"
+  },
   "imagePreview.altText": {
     "defaultMessage": "goose 이미지"
   },
@@ -4680,5 +4710,68 @@
   },
   "providerConfigurationModal.deviceCodeVisit": {
     "defaultMessage": "방문하여"
+  },
+  "themeSelector.builtinGroup": {
+    "defaultMessage": "기본"
+  },
+  "themeSelector.catppuccinGroup": {
+    "defaultMessage": "Catppuccin"
+  },
+  "themeSelector.accent": {
+    "defaultMessage": "액센트"
+  },
+  "themeSelector.catppuccinLatte": {
+    "defaultMessage": "Latte"
+  },
+  "themeSelector.catppuccinFrappe": {
+    "defaultMessage": "Frappé"
+  },
+  "themeSelector.catppuccinMacchiato": {
+    "defaultMessage": "Macchiato"
+  },
+  "themeSelector.catppuccinMocha": {
+    "defaultMessage": "Mocha"
+  },
+  "themeSelector.accentRosewater": {
+    "defaultMessage": "로즈워터"
+  },
+  "themeSelector.accentFlamingo": {
+    "defaultMessage": "플라밍고"
+  },
+  "themeSelector.accentPink": {
+    "defaultMessage": "핑크"
+  },
+  "themeSelector.accentMauve": {
+    "defaultMessage": "모브"
+  },
+  "themeSelector.accentRed": {
+    "defaultMessage": "레드"
+  },
+  "themeSelector.accentMaroon": {
+    "defaultMessage": "마룬"
+  },
+  "themeSelector.accentPeach": {
+    "defaultMessage": "피치"
+  },
+  "themeSelector.accentYellow": {
+    "defaultMessage": "옐로"
+  },
+  "themeSelector.accentGreen": {
+    "defaultMessage": "그린"
+  },
+  "themeSelector.accentTeal": {
+    "defaultMessage": "틸"
+  },
+  "themeSelector.accentSky": {
+    "defaultMessage": "스카이"
+  },
+  "themeSelector.accentSapphire": {
+    "defaultMessage": "사파이어"
+  },
+  "themeSelector.accentBlue": {
+    "defaultMessage": "블루"
+  },
+  "themeSelector.accentLavender": {
+    "defaultMessage": "라벤더"
   }
 }
