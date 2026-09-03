@@ -4,11 +4,14 @@ import type { GooseApp } from './types/apps';
 import type { Settings, SettingKey } from './utils/settings';
 import { defaultSettings } from './utils/settings';
 import type { OpenExternalUrlResult } from './utils/urlSecurity';
+import { isCatppuccinAccent, isThemeId } from './theme/types';
 
+import type { DetectedIde, IdeId, OpenTarget } from './types/ide';
 // Mapping from settings keys to their old localStorage keys for lazy migration
 const localStorageKeyMap: Partial<Record<SettingKey, string>> = {
   theme: 'theme',
   useSystemTheme: 'use_system_theme',
+  catppuccinAccent: 'catppuccin_accent',
   responseStyle: 'response_style',
   showPricing: 'show_pricing',
   seenAnnouncementIds: 'seenAnnouncementIds',
@@ -22,9 +25,11 @@ function parseLocalStorageValue<K extends SettingKey>(
   try {
     switch (key) {
       case 'theme':
-        return (rawValue === 'dark' || rawValue === 'light' ? rawValue : null) as Settings[K];
+        return (isThemeId(rawValue) ? rawValue : null) as Settings[K];
       case 'useSystemTheme':
         return (rawValue === 'true') as unknown as Settings[K];
+      case 'catppuccinAccent':
+        return (isCatppuccinAccent(rawValue) ? rawValue : null) as Settings[K];
       case 'responseStyle':
         return rawValue as Settings[K];
       case 'showPricing':
@@ -154,9 +159,10 @@ type ElectronAPI = {
   ) => void;
   emit: (channel: string, ...args: unknown[]) => void;
   broadcastThemeChange: (themeData: {
-    mode: string;
-    useSystemTheme: boolean;
-    theme: string;
+    mode?: string;
+    useSystemTheme?: boolean;
+    theme?: string;
+    catppuccinAccent?: string;
     tokensUpdated?: boolean;
   }) => void;
   openExternal: (url: string) => Promise<OpenExternalUrlResult>;
@@ -181,6 +187,8 @@ type ElectronAPI = {
   addRecentDir: (dir: string) => Promise<boolean>;
   listRecentDirs: () => Promise<string[]>;
   listGitWorktreeDirs: (dir: string) => Promise<string[]>;
+  listDetectedIdes: () => Promise<DetectedIde[]>;
+  openInIde: (ideId: IdeId, target: OpenTarget) => Promise<void>;
   getGitBranchInfo: (dir: string) => Promise<{ branch: string } | null>;
   listGitBranches: (dir: string) => Promise<string[]>;
   switchGitBranch: (dir: string, branch: string) => Promise<{ success: boolean; error?: string }>;
@@ -294,9 +302,10 @@ const electronAPI: ElectronAPI = {
     ipcRenderer.emit(channel, ...args);
   },
   broadcastThemeChange: (themeData: {
-    mode: string;
-    useSystemTheme: boolean;
-    theme: string;
+    mode?: string;
+    useSystemTheme?: boolean;
+    theme?: string;
+    catppuccinAccent?: string;
     tokensUpdated?: boolean;
   }) => {
     ipcRenderer.send('broadcast-theme-change', themeData);
@@ -343,6 +352,8 @@ const electronAPI: ElectronAPI = {
   addRecentDir: (dir: string) => ipcRenderer.invoke('add-recent-dir', dir),
   listRecentDirs: () => ipcRenderer.invoke('list-recent-dirs'),
   listGitWorktreeDirs: (dir: string) => ipcRenderer.invoke('list-git-worktree-dirs', dir),
+  listDetectedIdes: () => ipcRenderer.invoke('ide-list-detected'),
+  openInIde: (ideId: IdeId, target: OpenTarget) => ipcRenderer.invoke('ide-open', ideId, target),
   getGitBranchInfo: (dir: string) => ipcRenderer.invoke('get-git-branch-info', dir),
   listGitBranches: (dir: string) => ipcRenderer.invoke('list-git-branches', dir),
   switchGitBranch: (dir: string, branch: string) =>
