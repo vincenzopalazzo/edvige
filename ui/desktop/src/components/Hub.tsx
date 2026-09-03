@@ -3,13 +3,12 @@
  *
  * The empty-chat landing screen. Visually it's "Pair with no messages yet" —
  * a large time + greeting above a centered, narrower ChatInput. Submitting
- * creates a session and navigates to /pair so the rest of the chat lifecycle
- * lives there.
+ * navigates to /pair immediately; PairRouteWrapper creates the session in
+ * the background so Enter does not wait on session/new.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { defineMessages, useIntl } from '../i18n';
-import { AppEvents } from '../constants/events';
 import ChatInput from './ChatInput';
 import { ChatInputCard } from './ChatInputCard';
 import { ChatState } from '../types/chatState';
@@ -18,7 +17,7 @@ import { View, ViewOptions } from '../utils/navigationUtils';
 import { useConfig } from './ConfigContext';
 import { getEffectiveWorkingDir, getInitialWorkingDir } from '../utils/workingDir';
 import { createSession } from '../sessions';
-import LoadingGoose from './LoadingGoose';
+import { AppEvents } from '../constants/events';
 import { UserInput } from '../types/message';
 import {
   createNextChatExtensionDraft,
@@ -68,6 +67,7 @@ export default function Hub({
     useState<LiveVoiceAvailabilityResponse_unstable | null>(null);
   const [nextChatExtensionDraft, setNextChatExtensionDraft] =
     useState<NextChatExtensionDraft | null>(null);
+  const hasSubmittedRef = useRef(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const { time, meridiem, hour } = useClock();
 
@@ -145,16 +145,11 @@ export default function Hub({
     setIsCreatingSession(true);
 
     try {
-      // A draft exists only once the user has opened the picker, so its absence is
-      // "not specified" while an empty draft is "start with no extensions".
       const sessionOptions = nextChatExtensionDraft
         ? {
             extensionConfigs: selectNextChatExtensions(extensionsList, nextChatExtensionDraft),
           }
         : { allExtensions: extensionsList };
-
-      // Resolve the effective directory at submit time: the IPC lookup may still
-      // be pending when the user submits, and an explicit pick must win.
       const dir = userSelectedWorkingDirRef.current ? workingDir : await getEffectiveWorkingDir();
       const session = await createSession(dir, sessionOptions);
       setNextChatExtensionDraft(null);
@@ -167,30 +162,28 @@ export default function Hub({
     }
   };
 
-  const handleSubmit = async (input: UserInput) => {
+  const handleSubmit = (input: UserInput) => {
     const { msg: userMessage, images } = input;
-    if (!(images.length > 0 || userMessage.trim())) return;
+    if (!(images.length > 0 || userMessage.trim()) || hasSubmittedRef.current) return;
 
-    const draftAtSubmit = draftRef.current;
-    const session = await createHubSession();
-    if (!session) return;
+    hasSubmittedRef.current = true;
 
-    window.dispatchEvent(new CustomEvent(AppEvents.SESSION_CREATED));
-    window.dispatchEvent(
-      new CustomEvent(AppEvents.ADD_ACTIVE_SESSION, {
-        detail: { sessionId: session.id, initialMessage: { msg: userMessage, images } },
-      })
-    );
+    const selectedExtensions = nextChatExtensionDraft
+      ? selectNextChatExtensions(extensionsList, nextChatExtensionDraft)
+      : [];
+    const sessionOptions =
+      selectedExtensions.length > 0
+        ? { extensionConfigs: selectedExtensions }
+        : { allExtensions: extensionsList };
 
-    // Preserve edits made while the session was being created.
-    if (draftRef.current === draftAtSubmit) {
-      draftRef.current = '';
-    }
+    const dir = userSelectedWorkingDirRef.current ? workingDir : getInitialWorkingDir();
+    draftRef.current = '';
 
     setView('pair', {
       disableAnimation: true,
-      resumeSessionId: session.id,
       initialMessage: { msg: userMessage, images },
+      workingDir: dir,
+      ...sessionOptions,
     });
   };
 
@@ -235,7 +228,7 @@ export default function Hub({
             sessionId={null}
             draftRef={draftRef}
             handleSubmit={handleSubmit}
-            chatState={isCreatingSession ? ChatState.LoadingConversation : ChatState.Idle}
+            chatState={ChatState.Idle}
             hasActiveRun={false}
             onStop={() => {}}
             initialValue=""
@@ -264,12 +257,6 @@ export default function Hub({
           />
         </ChatInputCard>
       </div>
-
-      {isCreatingSession && (
-        <div className="absolute bottom-4 left-4 z-20 pointer-events-none">
-          <LoadingGoose chatState={ChatState.LoadingConversation} />
-        </div>
-      )}
     </div>
   );
 }
