@@ -193,6 +193,7 @@ interface ChatInputProps {
   latestInference?: Message['metadata']['inference'] | null;
   nextChatExtensionDraft?: NextChatExtensionDraft;
   onNextChatExtensionDraftChange?: (draft: NextChatExtensionDraft) => void;
+  draftRef?: React.RefObject<string>;
 }
 
 export default function ChatInput({
