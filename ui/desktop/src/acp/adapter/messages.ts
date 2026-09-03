@@ -9,6 +9,7 @@ import {
   DEFAULT_VISIBLE_MESSAGE_METADATA,
   getGooseMessageMeta,
   messagesChange,
+  rewriteMessage,
 } from './shared';
 
 type StreamedContentBlock = Extract<ContentBlock, { type: 'text' | 'image' }>;
@@ -31,34 +32,36 @@ export function applyContentChunk(
   const existing = findMessageForChunk(state, role, messageId, gooseMeta.created);
 
   if (existing) {
-    const isOutputLimitFallbackChunk =
-      gooseMeta.outputTokenLimitReached === true && gooseMeta.fallbackContent === true;
-    const existingMessageHasContent = existing.content.length > 0;
-    const shouldSkipFallbackChunk = isOutputLimitFallbackChunk && existingMessageHasContent;
+    const next = rewriteMessage(state, existing, (draft) => {
+      const isOutputLimitFallbackChunk =
+        gooseMeta.outputTokenLimitReached === true && gooseMeta.fallbackContent === true;
+      const existingMessageHasContent = draft.content.length > 0;
+      const shouldSkipFallbackChunk = isOutputLimitFallbackChunk && existingMessageHasContent;
 
-    existing.metadata.outputTokenLimitReached = gooseMeta.outputTokenLimitReached;
-    existing.metadata.fallbackContent = shouldSkipFallbackChunk
-      ? undefined
-      : gooseMeta.fallbackContent;
+      draft.metadata.outputTokenLimitReached = gooseMeta.outputTokenLimitReached;
+      draft.metadata.fallbackContent = shouldSkipFallbackChunk
+        ? undefined
+        : gooseMeta.fallbackContent;
 
-    if (shouldSkipFallbackChunk) {
-      return messagesChangeWithLocalSteerConfirmation(state, existing, gooseMeta.steer);
-    }
+      if (shouldSkipFallbackChunk) {
+        return;
+      }
 
-    const lastContent = existing.content[existing.content.length - 1];
-    if (reconcileLocalSteerTextChunk(state, existing, content, gooseMeta.steer)) {
-      return messagesChangeWithLocalSteerConfirmation(state, existing, gooseMeta.steer);
-    }
+      if (reconcileLocalSteerTextChunk(state, draft, content, gooseMeta.steer)) {
+        return;
+      }
 
-    if (lastContent?.type === 'text' && content.type === 'text') {
-      lastContent.text += content.text;
-    } else if (content.type === 'image' && hasImageContent(existing, content)) {
-      return messagesChangeWithLocalSteerConfirmation(state, existing, gooseMeta.steer);
-    } else {
-      existing.content.push(content);
-    }
+      const lastContent = draft.content[draft.content.length - 1];
+      if (lastContent?.type === 'text' && content.type === 'text') {
+        lastContent.text += content.text;
+      } else if (content.type === 'image' && hasImageContent(draft, content)) {
+        return;
+      } else {
+        draft.content.push(content);
+      }
+    });
 
-    return messagesChangeWithLocalSteerConfirmation(state, existing, gooseMeta.steer);
+    return messagesChangeWithLocalSteerConfirmation(state, next, gooseMeta.steer);
   } else {
     state.messages.push({
       ...(messageId ? { id: messageId } : {}),
@@ -85,6 +88,7 @@ export function applyThoughtChunk(
     return [];
   }
 
+  const thoughtText = update.content.text;
   const gooseMeta = getGooseMessageMeta(update);
   const messageId = update.messageId ?? gooseMeta.messageId;
   let message = findMessageForChunk(state, 'assistant', messageId, gooseMeta.created);
@@ -100,14 +104,20 @@ export function applyThoughtChunk(
     state.messages.push(message);
   }
 
-  message.metadata.outputTokenLimitReached = gooseMeta.outputTokenLimitReached;
+  rewriteMessage(state, message, (draft) => {
+    draft.metadata.outputTokenLimitReached = gooseMeta.outputTokenLimitReached;
 
-  const lastContent = message.content[message.content.length - 1];
-  if (lastContent?.type === 'thinking') {
-    lastContent.thinking += update.content.text;
-  } else {
-    message.content.push({ type: 'thinking', thinking: update.content.text, signature: '' });
-  }
+    const lastContent = draft.content[draft.content.length - 1];
+    if (lastContent?.type === 'thinking') {
+      draft.content[draft.content.length - 1] = {
+        type: 'thinking',
+        thinking: lastContent.thinking + thoughtText,
+        signature: lastContent.signature,
+      };
+    } else {
+      draft.content.push({ type: 'thinking', thinking: thoughtText, signature: '' });
+    }
+  });
 
   return messagesChange(state);
 }

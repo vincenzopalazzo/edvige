@@ -67,6 +67,7 @@ const mockSettings: Record<string, unknown> = {
   },
   theme: 'light',
   useSystemTheme: true,
+  catppuccinAccent: 'mauve',
   language: 'system',
   responseStyle: 'concise',
   showPricing: true,
@@ -90,5 +91,6 @@ Object.defineProperty(window, 'electron', {
     logError: vi.fn(),
     on: vi.fn(),
     off: vi.fn(),
+    broadcastThemeChange: vi.fn(),
   },
 });

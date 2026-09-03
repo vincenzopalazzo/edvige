@@ -57,6 +57,31 @@ export function cloneMessage(message: Message): Message {
   };
 }
 
+export function cloneMessagesSharingUnchanged(
+  messages: Message[],
+  publishedByLive?: Map<Message, Message>,
+  _previousPublished?: Message[]
+): Message[] {
+  return messages.map((message) => publishedByLive?.get(message) ?? cloneMessage(message));
+}
+
+export function rewriteMessage(
+  state: AdapterState,
+  existing: Message,
+  mutate: (message: Message) => void
+): Message {
+  const next = cloneMessage(existing);
+  mutate(next);
+  const index = state.messages.indexOf(existing);
+  if (index === -1) {
+    return next;
+  }
+  const messages = state.messages.slice();
+  messages[index] = next;
+  state.messages = messages;
+  return next;
+}
+
 export function getGooseMessageMeta(update: { _meta?: unknown }): GooseMessageMeta {
   if (!isRecord(update._meta)) {
     return {};

@@ -135,4 +135,17 @@ describe('deriveMessageRowContexts', () => {
     expect(contexts[1].previousResolvedModel).toBeNull();
     expect(contexts[2].previousResolvedModel).toBe('model-a');
   });
+
+  it('reuses previous row contexts when only the last text message identity changes', () => {
+    const first = message('one', 'assistant', [{ type: 'text', text: 'hello' }]);
+    const second = message('two', 'assistant', [{ type: 'text', text: 'wor' }]);
+    const initial = deriveMessageRowContexts([first, second]);
+    const nextSecond = message('two', 'assistant', [{ type: 'text', text: 'world' }]);
+    const next = deriveMessageRowContexts([first, nextSecond], {
+      messages: [first, second],
+      contexts: initial,
+    });
+
+    expect(next).toBe(initial);
+  });
 });
