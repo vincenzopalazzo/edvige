@@ -30,7 +30,50 @@ function resolvedModel(message: Message): string | null {
   return message.metadata.inference?.resolvedModel ?? null;
 }
 
-export function deriveMessageRowContexts(messages: Message[]): MessageRowContext[] {
+function messageAffectsToolLookups(message: Message): boolean {
+  return message.content.some(
+    (content) =>
+      content.type === 'toolRequest' ||
+      content.type === 'toolResponse' ||
+      content.type === 'toolConfirmationRequest' ||
+      (content.type === 'actionRequired' && content.data.actionType === 'toolConfirmation')
+  );
+}
+
+function sameMessageIdentities(left: Message[], right: Message[]): boolean {
+  if (left === right) {
+    return true;
+  }
+  if (left.length !== right.length) {
+    return false;
+  }
+  return left.every((message, index) => message === right[index]);
+}
+
+function canReuseRowContexts(previous: Message[], next: Message[]): boolean {
+  if (sameMessageIdentities(previous, next)) {
+    return true;
+  }
+  if (previous.length !== next.length) {
+    return false;
+  }
+  for (let i = 0; i < next.length - 1; i++) {
+    if (previous[i] !== next[i]) {
+      return false;
+    }
+  }
+  const previousLast = previous[previous.length - 1];
+  const nextLast = next[next.length - 1];
+  return !messageAffectsToolLookups(previousLast) && !messageAffectsToolLookups(nextLast);
+}
+
+export function deriveMessageRowContexts(
+  messages: Message[],
+  previous?: { messages: Message[]; contexts: MessageRowContext[] }
+): MessageRowContext[] {
+  if (previous && canReuseRowContexts(previous.messages, messages)) {
+    return previous.contexts;
+  }
   const toolCallChains = identifyConsecutiveToolCalls(messages);
   const chainedMessageIndices = new Set<number>();
   const hiddenTimestampIndices = new Set<number>();
