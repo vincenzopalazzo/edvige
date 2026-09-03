@@ -1,12 +1,14 @@
 use std::collections::HashMap;
-use std::fs;
+use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use chrono::{DateTime, Local, Utc};
+use chrono::{DateTime, Duration as ChronoDuration, Local, Utc};
+use croner::parser::{CronParser, Seconds};
+use fs2::FileExt;
 use tokio::sync::Mutex;
 use tokio_cron_scheduler::{job::JobId, Job, JobScheduler as TokioJobScheduler};
 use tokio_util::sync::CancellationToken;
@@ -73,18 +75,156 @@ fn read_validated_schedule_recipe(source_path: &Path) -> Result<Vec<u8>, Schedul
     Ok(bytes)
 }
 
-async fn persist_jobs(
+const MAX_CRON_CATCHUP: ChronoDuration = ChronoDuration::minutes(2);
+
+fn lock_schedule_storage(storage_path: &Path) -> io::Result<File> {
+    if let Some(parent) = storage_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let lock_path = storage_path.with_extension("json.lock");
+    let file = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(lock_path)?;
+    file.lock_exclusive()?;
+    Ok(file)
+}
+
+fn load_scheduled_jobs(storage_path: &Path) -> Result<Vec<ScheduledJob>, SchedulerError> {
+    if !storage_path.exists() {
+        return Ok(Vec::new());
+    }
+    let data = fs::read_to_string(storage_path)?;
+    if data.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    Ok(serde_json::from_str(&data)?)
+}
+
+async fn persist_jobs_unlocked(
     storage_path: &Path,
     jobs: &Arc<Mutex<JobsMap>>,
 ) -> Result<(), SchedulerError> {
     let jobs_guard = jobs.lock().await;
     let list: Vec<ScheduledJob> = jobs_guard.values().map(|(_, j)| j.clone()).collect();
+    drop(jobs_guard);
     if let Some(parent) = storage_path.parent() {
         fs::create_dir_all(parent)?;
     }
     let data = serde_json::to_string_pretty(&list)?;
     fs::write(storage_path, data)?;
     Ok(())
+}
+
+async fn persist_jobs(
+    storage_path: &Path,
+    jobs: &Arc<Mutex<JobsMap>>,
+) -> Result<(), SchedulerError> {
+    let _lock = lock_schedule_storage(storage_path)?;
+    persist_jobs_unlocked(storage_path, jobs).await
+}
+
+fn normalize_cron_expression(cron: &str) -> Result<String, SchedulerError> {
+    let cron_parts: Vec<&str> = cron.split_whitespace().collect();
+    match cron_parts.len() {
+        5 => Ok(format!("0 {cron}")),
+        6 => Ok(cron.to_string()),
+        _ => Err(SchedulerError::CronParseError(format!(
+            "Invalid cron expression '{cron}': expected 5 or 6 fields, got {}",
+            cron_parts.len()
+        ))),
+    }
+}
+
+fn parse_cron_expression(cron: &str) -> Result<croner::Cron, SchedulerError> {
+    let cron = normalize_cron_expression(cron)?;
+    CronParser::builder()
+        .seconds(Seconds::Required)
+        .dom_and_dow(true)
+        .build()
+        .parse(&cron)
+        .map_err(|e| SchedulerError::CronParseError(e.to_string()))
+}
+
+fn scheduled_occurrence_at(
+    cron: &str,
+    now: DateTime<Utc>,
+) -> Result<Option<DateTime<Utc>>, SchedulerError> {
+    let schedule = parse_cron_expression(cron)?;
+    let local_now = now.with_timezone(&Local);
+    let occurrence = schedule
+        .find_previous_occurrence(&local_now, true)
+        .ok()
+        .map(|local| local.with_timezone(&Utc));
+    Ok(occurrence)
+}
+
+fn should_skip_scheduled_run(job: &ScheduledJob, now: DateTime<Utc>) -> bool {
+    if job.paused || job.currently_running {
+        return true;
+    }
+
+    let Some(occurrence) = scheduled_occurrence_at(&job.cron, now).ok().flatten() else {
+        return false;
+    };
+
+    if now - occurrence > MAX_CRON_CATCHUP {
+        return true;
+    }
+
+    job.last_run.is_some_and(|last_run| last_run >= occurrence)
+}
+
+async fn claim_scheduled_run(
+    storage_path: &Path,
+    jobs: &Arc<Mutex<JobsMap>>,
+    job_id: &str,
+    now: DateTime<Utc>,
+) -> bool {
+    let _lock = match lock_schedule_storage(storage_path) {
+        Ok(lock) => lock,
+        Err(e) => {
+            tracing::error!("Failed to lock scheduler storage: {e}");
+            return false;
+        }
+    };
+
+    let disk_jobs = match load_scheduled_jobs(storage_path) {
+        Ok(jobs) => jobs,
+        Err(e) => {
+            tracing::error!("Failed to read scheduler storage: {e}");
+            Vec::new()
+        }
+    };
+
+    let claimed = {
+        let mut jobs_guard = jobs.lock().await;
+        if let Some((_, job)) = jobs_guard.get_mut(job_id) {
+            if let Some(disk_job) = disk_jobs.iter().find(|job| job.id == job_id) {
+                job.last_run = disk_job.last_run;
+                job.paused = disk_job.paused;
+            }
+            if should_skip_scheduled_run(job, now) {
+                false
+            } else {
+                job.last_run = Some(now);
+                job.currently_running = true;
+                job.process_start_time = Some(now);
+                true
+            }
+        } else {
+            false
+        }
+    };
+
+    if claimed {
+        if let Err(e) = persist_jobs_unlocked(storage_path, jobs).await {
+            tracing::error!("Failed to persist job status: {e}");
+        }
+    }
+    claimed
 }
 
 fn clear_running_state(job: &mut ScheduledJob) -> bool {
@@ -142,25 +282,14 @@ impl Scheduler {
         let running_tasks_arc = self.running_tasks.clone();
         let session_manager = self.session_manager.clone();
 
-        let cron_parts: Vec<&str> = job.cron.split_whitespace().collect();
-        let cron = match cron_parts.len() {
-            5 => {
-                tracing::warn!(
-                    "Job '{}' has legacy 5-field cron '{}', converting to 6-field",
-                    job.id,
-                    job.cron
-                );
-                format!("0 {}", job.cron)
-            }
-            6 => job.cron.clone(),
-            _ => {
-                return Err(SchedulerError::CronParseError(format!(
-                    "Invalid cron expression '{}': expected 5 or 6 fields, got {}",
-                    job.cron,
-                    cron_parts.len()
-                )));
-            }
-        };
+        if job.cron.split_whitespace().count() == 5 {
+            tracing::warn!(
+                "Job '{}' has legacy 5-field cron '{}', converting to 6-field",
+                job.id,
+                job.cron
+            );
+        }
+        let cron = normalize_cron_expression(&job.cron)?;
 
         let local_tz = Local::now().timezone();
 
@@ -174,30 +303,16 @@ impl Scheduler {
             let session_manager = session_manager.clone();
 
             Box::pin(async move {
-                let should_execute = {
-                    let jobs_guard = current_jobs_arc.lock().await;
-                    jobs_guard
-                        .get(&task_job_id)
-                        .map(|(_, j)| !j.paused)
-                        .unwrap_or(false)
-                };
-
-                if !should_execute {
-                    return;
-                }
-
                 let current_time = Utc::now();
+                if !claim_scheduled_run(
+                    &local_storage_path,
+                    &current_jobs_arc,
+                    &task_job_id,
+                    current_time,
+                )
+                .await
                 {
-                    let mut jobs_guard = current_jobs_arc.lock().await;
-                    if let Some((_, job)) = jobs_guard.get_mut(&task_job_id) {
-                        job.last_run = Some(current_time);
-                        job.currently_running = true;
-                        job.process_start_time = Some(current_time);
-                    }
-                }
-
-                if let Err(e) = persist_jobs(&local_storage_path, &current_jobs_arc).await {
-                    tracing::error!("Failed to persist job status: {}", e);
+                    return;
                 }
 
                 let cancel_token = CancellationToken::new();
@@ -1158,6 +1273,92 @@ impl SchedulerTrait for Scheduler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::TimeZone;
+
+    fn scheduled_job(id: &str, cron: &str, recipe_path: &Path) -> ScheduledJob {
+        ScheduledJob {
+            id: id.to_string(),
+            source: recipe_path.to_string_lossy().to_string(),
+            cron: cron.to_string(),
+            last_run: None,
+            currently_running: false,
+            paused: false,
+            current_session_id: None,
+            process_start_time: None,
+            parameters: vec![],
+            recipe_base_dir: None,
+        }
+    }
+
+    #[test]
+    fn skips_already_claimed_cron_occurrence() {
+        let occurrence = Local
+            .with_ymd_and_hms(2026, 8, 31, 8, 15, 0)
+            .unwrap()
+            .with_timezone(&Utc);
+        let mut job = scheduled_job(
+            "swisssync-prod-triage",
+            "15 8 * * *",
+            Path::new("recipe.yaml"),
+        );
+        job.last_run = Some(occurrence);
+
+        assert!(should_skip_scheduled_run(
+            &job,
+            occurrence + ChronoDuration::seconds(1)
+        ));
+        assert!(should_skip_scheduled_run(
+            &job,
+            occurrence + ChronoDuration::minutes(30)
+        ));
+        assert!(!should_skip_scheduled_run(
+            &job,
+            occurrence + ChronoDuration::days(1)
+        ));
+    }
+
+    #[test]
+    fn skips_stale_cron_catchup_ticks() {
+        let occurrence = Local
+            .with_ymd_and_hms(2026, 8, 31, 8, 15, 0)
+            .unwrap()
+            .with_timezone(&Utc);
+        let job = scheduled_job(
+            "swisssync-prod-triage",
+            "15 8 * * *",
+            Path::new("recipe.yaml"),
+        );
+
+        assert!(!should_skip_scheduled_run(
+            &job,
+            occurrence + ChronoDuration::seconds(30)
+        ));
+        assert!(should_skip_scheduled_run(
+            &job,
+            occurrence + ChronoDuration::minutes(30)
+        ));
+    }
+
+    #[test]
+    fn skips_in_process_duplicate_cron_ticks() {
+        let occurrence = Local
+            .with_ymd_and_hms(2026, 8, 31, 8, 15, 0)
+            .unwrap()
+            .with_timezone(&Utc);
+        let mut job = scheduled_job(
+            "swisssync-prod-triage",
+            "15 8 * * *",
+            Path::new("recipe.yaml"),
+        );
+        job.currently_running = true;
+        job.process_start_time = Some(occurrence);
+
+        assert!(should_skip_scheduled_run(
+            &job,
+            occurrence + ChronoDuration::seconds(1)
+        ));
+    }
+
     use std::fs::File;
     use tempfile::tempdir;
     use tokio::time::{sleep, Duration};
