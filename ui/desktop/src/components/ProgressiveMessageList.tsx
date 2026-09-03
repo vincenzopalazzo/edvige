@@ -65,6 +65,8 @@ interface MessageRowProps {
   isStreaming: boolean;
   isUser: boolean;
   message: Message;
+  messages: Message[];
+  messageIndex: number;
   modelChangeMessage: string | null;
   onMessageUpdate?: (
     messageId: string,
@@ -87,6 +89,8 @@ function MessageRowComponent({
   isStreaming,
   isUser,
   message,
+  messages,
+  messageIndex,
   modelChangeMessage,
   onMessageUpdate,
   rowContext,
@@ -135,6 +139,8 @@ function MessageRowComponent({
             toolStates={rowContext.toolStates}
             toolNotifications={toolNotifications}
             toolConfirmationShownInline={rowContext.toolConfirmationShownInline}
+            messages={messages}
+            messageIndex={messageIndex}
             append={append}
             isStreaming={isStreaming}
             submitElicitationResponse={submitElicitationResponse}
@@ -277,6 +283,8 @@ export default function ProgressiveMessageList({
           key={messageKey}
           append={append}
           index={index}
+          messages={messages}
+          messageIndex={index}
           isStreaming={
             isStreamingMessage &&
             !isUser &&
