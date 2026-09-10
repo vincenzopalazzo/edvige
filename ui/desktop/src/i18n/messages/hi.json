@@ -926,8 +926,6 @@
   "dirSwitcher.enterPathInvalid": {
     "defaultMessage": "Working directory must be an absolute path"
   },
-
-
   "dirSwitcher.failedToUpdateWorkingDir": {
     "defaultMessage": "कार्यशील निर्देशिका अद्यतन करने में विफल"
   },
@@ -4569,6 +4567,12 @@
   },
   "transcriptWindow.loadEarlier": {
     "defaultMessage": "पुराने संदेश लोड करें"
+  },
+  "transcriptWindow.earlierOnServer": {
+    "defaultMessage": "पुराने संदेश लोड नहीं हुए हैं"
+  },
+  "transcriptWindow.loadingEarlier": {
+    "defaultMessage": "पुराने संदेश लोड हो रहे हैं..."
   },
   "updateSection.autoDownload": {
     "defaultMessage": "अपडेट बैकग्राउंड में अपने आप डाउनलोड हो जाएगा."

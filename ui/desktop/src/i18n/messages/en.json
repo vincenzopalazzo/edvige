@@ -4724,11 +4724,17 @@
   "toolConfirmation.gooseWouldLikeToCallWithName": {
     "defaultMessage": "Goose would like to call {toolName}. Allow?"
   },
+  "transcriptWindow.earlierOnServer": {
+    "defaultMessage": "Earlier messages are not loaded"
+  },
   "transcriptWindow.hiddenMessages": {
     "defaultMessage": "{count,plural,one{# message hidden for performance purposes} other{# messages hidden for performance purposes}}"
   },
   "transcriptWindow.loadEarlier": {
     "defaultMessage": "Load earlier messages"
+  },
+  "transcriptWindow.loadingEarlier": {
+    "defaultMessage": "Loading earlier messages..."
   },
   "updateSection.autoDownload": {
     "defaultMessage": "Goose will download the update in the background and install it the next time you quit or restart."

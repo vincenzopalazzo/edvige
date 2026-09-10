@@ -2,6 +2,7 @@ import { methods, type SessionInfo } from '@agentclientprotocol/sdk';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getAcpClient } from '../acpConnection';
 import {
+  ACP_SESSION_REPLAY_TAIL,
   acpGetSessionListItem,
   acpListSessions,
   acpLoadSession,
@@ -100,6 +101,7 @@ describe('ACP sessions', () => {
       sessionId: 'session-1',
       cwd: '/tmp',
       mcpServers: [],
+      _meta: { replayTail: ACP_SESSION_REPLAY_TAIL },
     });
     expect(client.goose.sessionInfo_unstable).toHaveBeenCalledTimes(2);
     expect(result.sessionInfo).toBe(loadedSessionInfo);

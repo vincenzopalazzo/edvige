@@ -926,8 +926,6 @@
   "dirSwitcher.enterPathInvalid": {
     "defaultMessage": "Working directory must be an absolute path"
   },
-
-
   "dirSwitcher.failedToUpdateWorkingDir": {
     "defaultMessage": "Çalışma dizini güncellenemedi"
   },
@@ -4569,6 +4567,12 @@
   },
   "transcriptWindow.loadEarlier": {
     "defaultMessage": "Daha önceki mesajları yükle"
+  },
+  "transcriptWindow.earlierOnServer": {
+    "defaultMessage": "Önceki mesajlar yüklenmedi"
+  },
+  "transcriptWindow.loadingEarlier": {
+    "defaultMessage": "Önceki mesajlar yükleniyor..."
   },
   "updateSection.autoDownload": {
     "defaultMessage": "Güncelleme arka planda otomatik olarak indirilecektir."

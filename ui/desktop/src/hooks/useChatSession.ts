@@ -146,6 +146,11 @@ export function useChatSession({
     [getCurrentSnapshot, onFinish, sessionId]
   );
 
+  const loadEarlierMessages = useCallback(
+    () => acpChatSessionController.loadEarlierMessages(sessionId),
+    [sessionId]
+  );
+
   const retrySessionLoad = useCallback(
     () => acpChatSessionController.loadSession(sessionId, { onSessionLoaded }),
     [sessionId, onSessionLoaded]
@@ -350,6 +355,9 @@ export function useChatSession({
     submitElicitationResponse,
     stopStreaming,
     retrySessionLoad,
+    loadEarlierMessages,
+    hasEarlierMessages: (acpSnapshot?.transcriptStartIndex ?? 0) > 0,
+    loadingEarlierMessages: acpSnapshot?.loadingEarlierMessages ?? false,
     tokenState,
     notifications: notificationsMap,
     pauseQueueOnStop: false,

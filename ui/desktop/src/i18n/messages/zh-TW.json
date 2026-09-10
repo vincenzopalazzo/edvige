@@ -926,8 +926,6 @@
   "dirSwitcher.enterPathInvalid": {
     "defaultMessage": "Working directory must be an absolute path"
   },
-
-
   "dirSwitcher.failedToUpdateWorkingDir": {
     "defaultMessage": "無法更新工作目錄"
   },
@@ -4569,6 +4567,12 @@
   },
   "transcriptWindow.loadEarlier": {
     "defaultMessage": "載入較早的訊息"
+  },
+  "transcriptWindow.earlierOnServer": {
+    "defaultMessage": "較早的訊息未載入"
+  },
+  "transcriptWindow.loadingEarlier": {
+    "defaultMessage": "正在載入較早的訊息..."
   },
   "updateSection.autoDownload": {
     "defaultMessage": "Goose 會在背景下載更新，並於您下次結束或重新啟動時安裝。"

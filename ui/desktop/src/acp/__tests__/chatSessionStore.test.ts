@@ -694,6 +694,46 @@ describe('acpChatSessionStore', () => {
   });
 });
 
+describe('transcript paging', () => {
+  const id = 'paging-session-1';
+
+  afterEach(() => {
+    acpChatSessionActions.deleteSnapshot(id);
+  });
+
+  it('reports earlier history until the transcript start is reached', () => {
+    acpChatSessionActions.setMessages(id, [message('c', 'third')]);
+    acpChatSessionActions.setTranscriptStartIndex(id, 2);
+
+    expect(acpChatSessionStore.getSnapshot(id)?.transcriptStartIndex).toBe(2);
+
+    acpChatSessionActions.finishLoadEarlierMessages(
+      id,
+      [message('a', 'first'), message('b', 'second')],
+      0
+    );
+
+    const snapshot = acpChatSessionStore.getSnapshot(id);
+    expect(snapshot?.transcriptStartIndex).toBe(0);
+    expect(snapshot?.messages.map((entry) => entry.id)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('tracks an in-flight fetch and leaves the transcript untouched on failure', () => {
+    acpChatSessionActions.setMessages(id, [message('c', 'third')]);
+    acpChatSessionActions.setTranscriptStartIndex(id, 2);
+
+    acpChatSessionActions.startLoadEarlierMessages(id);
+    expect(acpChatSessionStore.getSnapshot(id)?.loadingEarlierMessages).toBe(true);
+
+    acpChatSessionActions.finishLoadEarlierMessages(id, [], 2);
+
+    const snapshot = acpChatSessionStore.getSnapshot(id);
+    expect(snapshot?.loadingEarlierMessages).toBe(false);
+    expect(snapshot?.transcriptStartIndex).toBe(2);
+    expect(snapshot?.messages.map((entry) => entry.id)).toEqual(['c']);
+  });
+});
+
 describe('useAcpChatSessionSnapshot', () => {
   const sessionId = 'hook-session-1';
 

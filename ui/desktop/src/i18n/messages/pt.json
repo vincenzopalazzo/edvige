@@ -926,8 +926,6 @@
   "dirSwitcher.enterPathInvalid": {
     "defaultMessage": "Working directory must be an absolute path"
   },
-
-
   "dirSwitcher.failedToUpdateWorkingDir": {
     "defaultMessage": "Falha ao atualizar o diretório de trabalho"
   },
@@ -4569,6 +4567,12 @@
   },
   "transcriptWindow.loadEarlier": {
     "defaultMessage": "Carregar mensagens anteriores"
+  },
+  "transcriptWindow.earlierOnServer": {
+    "defaultMessage": "As mensagens anteriores não estão carregadas"
+  },
+  "transcriptWindow.loadingEarlier": {
+    "defaultMessage": "Carregando mensagens anteriores..."
   },
   "updateSection.autoDownload": {
     "defaultMessage": "O Goose transferirá a atualização em segundo plano e instalá-la-á da próxima vez que sair ou reiniciar."

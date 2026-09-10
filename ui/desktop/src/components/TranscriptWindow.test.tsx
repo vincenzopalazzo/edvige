@@ -60,6 +60,31 @@ function renderWindow(messages: Message[], sessionId = 'test-session') {
   );
 }
 
+function renderServerPagedWindow(
+  messages: Message[],
+  options: {
+    hasEarlierMessages?: boolean;
+    loadingEarlierMessages?: boolean;
+    onLoadEarlierMessages?: () => void;
+  } = {}
+) {
+  return render(
+    <StrictMode>
+      <IntlTestWrapper>
+        <TranscriptWindow
+          messages={messages}
+          sessionId="test-session"
+          append={append}
+          isUserMessage={isUserMessage}
+          hasEarlierMessages={options.hasEarlierMessages ?? false}
+          loadingEarlierMessages={options.loadingEarlierMessages ?? false}
+          onLoadEarlierMessages={options.onLoadEarlierMessages}
+        />
+      </IntlTestWrapper>
+    </StrictMode>
+  );
+}
+
 function rerenderWindow(
   rerender: (node: React.ReactElement) => void,
   messages: Message[],
@@ -255,5 +280,62 @@ describe('TranscriptWindow', () => {
 
     expect(screen.getByTestId('hidden-messages-count')).toHaveTextContent('1 message hidden');
     expect(screen.queryByText('m-241')).not.toBeNull();
+  });
+});
+
+describe('TranscriptWindow server paging', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('offers no earlier control when the whole transcript is loaded', () => {
+    renderServerPagedWindow(makeMessages(5), { hasEarlierMessages: false });
+
+    expect(screen.queryByTestId('hidden-messages-divider')).toBeNull();
+  });
+
+  it('offers to fetch earlier messages when the server still holds some', () => {
+    const onLoadEarlierMessages = vi.fn();
+    renderServerPagedWindow(makeMessages(5), {
+      hasEarlierMessages: true,
+      onLoadEarlierMessages,
+    });
+
+    fireEvent.click(screen.getByTestId('load-earlier-messages'));
+
+    expect(onLoadEarlierMessages).toHaveBeenCalledTimes(1);
+  });
+
+  it('reveals messages already in memory before asking the server', () => {
+    const onLoadEarlierMessages = vi.fn();
+    renderServerPagedWindow(makeMessages(300), {
+      hasEarlierMessages: true,
+      onLoadEarlierMessages,
+    });
+    flushRendering();
+
+    expect(screen.getByTestId('hidden-messages-count')).toHaveTextContent('80 messages hidden');
+    fireEvent.click(screen.getByTestId('load-earlier-messages'));
+
+    expect(onLoadEarlierMessages).not.toHaveBeenCalled();
+  });
+
+  it('disables the control while a fetch is in flight', () => {
+    const onLoadEarlierMessages = vi.fn();
+    renderServerPagedWindow(makeMessages(5), {
+      hasEarlierMessages: true,
+      loadingEarlierMessages: true,
+      onLoadEarlierMessages,
+    });
+
+    const button = screen.getByTestId('load-earlier-messages');
+    expect(button).toBeDisabled();
+
+    fireEvent.click(button);
+    expect(onLoadEarlierMessages).not.toHaveBeenCalled();
   });
 });

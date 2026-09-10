@@ -114,6 +114,8 @@ function snapshotWithActivePrompt(activePromptAttemptId: string | null): AcpChat
     activePromptAttemptId,
     activeRunId: activePromptAttemptId ? 'run-1' : null,
     pendingCancelPromptAttemptId: null,
+    transcriptStartIndex: 0,
+    loadingEarlierMessages: false,
   };
 }
 

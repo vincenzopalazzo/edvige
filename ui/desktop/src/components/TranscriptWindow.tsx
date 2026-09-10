@@ -18,11 +18,29 @@ const i18n = defineMessages({
     id: 'transcriptWindow.loadEarlier',
     defaultMessage: 'Load earlier messages',
   },
+  loadingEarlier: {
+    id: 'transcriptWindow.loadingEarlier',
+    defaultMessage: 'Loading earlier messages...',
+  },
+  earlierOnServer: {
+    id: 'transcriptWindow.earlierOnServer',
+    defaultMessage: 'Earlier messages are not loaded',
+  },
 });
 
-type TranscriptWindowProps = Omit<ProgressiveMessageListProps, 'insertAfter' | 'rowContexts'>;
+type TranscriptWindowProps = Omit<ProgressiveMessageListProps, 'insertAfter' | 'rowContexts'> & {
+  /** True while older pages of this transcript remain unfetched on the server. */
+  hasEarlierMessages?: boolean;
+  loadingEarlierMessages?: boolean;
+  onLoadEarlierMessages?: () => void;
+};
 
-export default function TranscriptWindow(props: TranscriptWindowProps) {
+export default function TranscriptWindow({
+  hasEarlierMessages = false,
+  loadingEarlierMessages = false,
+  onLoadEarlierMessages,
+  ...props
+}: TranscriptWindowProps) {
   const { messages, sessionId, showLoadingThreshold } = props;
   const intl = useIntl();
   const [extraTailCount, setExtraTailCount] = useState(0);
@@ -86,15 +104,21 @@ export default function TranscriptWindow(props: TranscriptWindowProps) {
 
   const handleLoadEarlier = (event: React.MouseEvent<HTMLButtonElement>) => {
     const viewport = event.currentTarget.closest<HTMLElement>('[data-radix-scroll-area-viewport]');
-    const anchor = viewport?.querySelectorAll<HTMLElement>('[data-testid="message-container"]')[
-      HEAD_COUNT
-    ];
+    const rows = viewport?.querySelectorAll<HTMLElement>('[data-testid="message-container"]');
+    // Rows arriving from the server are prepended above the whole list; rows
+    // revealed from memory appear after the head, so each anchors differently.
+    const anchor = rows?.[isWindowed ? HEAD_COUNT : 0];
     if (viewport && anchor) {
       anchorElementRef.current = anchor;
       anchorViewportOffsetRef.current =
         anchor.getBoundingClientRect().top - viewport.getBoundingClientRect().top;
     }
-    setExtraTailCount((current) => current + EXPAND_CHUNK);
+
+    if (isWindowed) {
+      setExtraTailCount((current) => current + EXPAND_CHUNK);
+      return;
+    }
+    onLoadEarlierMessages?.();
   };
 
   // Progressive rendering indexes from the front of the array; when older rows
@@ -103,36 +127,43 @@ export default function TranscriptWindow(props: TranscriptWindowProps) {
   // expansion beyond the default window mounts the visible set immediately.
   const hasExpandedWindow = extraTailCount > 0 && messages.length > FULL_WINDOW_COUNT;
 
-  const hiddenMessagesDivider = isWindowed ? (
+  const showEarlierControl = isWindowed || hasEarlierMessages;
+  const earlierControl = showEarlierControl ? (
     <div
       data-testid="hidden-messages-divider"
       className="my-6 flex flex-col items-center gap-1 text-xs text-text-secondary"
     >
       <span data-testid="hidden-messages-count" aria-live="polite">
-        {intl.formatMessage(i18n.hiddenMessages, { count: hiddenCount })}
+        {isWindowed
+          ? intl.formatMessage(i18n.hiddenMessages, { count: hiddenCount })
+          : intl.formatMessage(i18n.earlierOnServer)}
       </span>
       <button
         type="button"
         data-testid="load-earlier-messages"
-        className="rounded underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-text-primary hover:opacity-80"
+        className="rounded underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-text-primary hover:opacity-80 disabled:opacity-60"
         onClick={handleLoadEarlier}
+        disabled={loadingEarlierMessages}
       >
-        {intl.formatMessage(i18n.loadEarlier)}
+        {intl.formatMessage(loadingEarlierMessages ? i18n.loadingEarlier : i18n.loadEarlier)}
       </button>
     </div>
   ) : undefined;
 
   return (
-    <ProgressiveMessageList
-      {...props}
-      messages={visibleMessages}
-      showLoadingThreshold={hasExpandedWindow ? visibleMessages.length : showLoadingThreshold}
-      rowContexts={visibleRowContexts}
-      insertAfter={isWindowed ? { index: HEAD_COUNT - 1, node: hiddenMessagesDivider } : undefined}
-      transcriptMessages={messages}
-      toRawIndex={(index) =>
-        !isWindowed || index < HEAD_COUNT ? index : index - HEAD_COUNT + tailStartIndex
-      }
-    />
+    <>
+      {!isWindowed && showEarlierControl ? earlierControl : null}
+      <ProgressiveMessageList
+        {...props}
+        messages={visibleMessages}
+        showLoadingThreshold={hasExpandedWindow ? visibleMessages.length : showLoadingThreshold}
+        rowContexts={visibleRowContexts}
+        insertAfter={isWindowed ? { index: HEAD_COUNT - 1, node: earlierControl } : undefined}
+        transcriptMessages={messages}
+        toRawIndex={(index) =>
+          !isWindowed || index < HEAD_COUNT ? index : index - HEAD_COUNT + tailStartIndex
+        }
+      />
+    </>
   );
 }

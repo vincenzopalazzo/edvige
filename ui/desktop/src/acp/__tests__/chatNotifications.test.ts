@@ -87,6 +87,8 @@ function snapshotWithName(name: string): AcpChatSessionSnapshot {
     activePromptAttemptId: null,
     activeRunId: null,
     pendingCancelPromptAttemptId: null,
+    transcriptStartIndex: 0,
+    loadingEarlierMessages: false,
   };
 }
 
@@ -109,6 +111,8 @@ function snapshotWithoutSession(): AcpChatSessionSnapshot {
     activePromptAttemptId: null,
     activeRunId: null,
     pendingCancelPromptAttemptId: null,
+    transcriptStartIndex: 0,
+    loadingEarlierMessages: false,
   };
 }
 

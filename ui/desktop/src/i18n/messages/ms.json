@@ -926,8 +926,6 @@
   "dirSwitcher.enterPathInvalid": {
     "defaultMessage": "Working directory must be an absolute path"
   },
-
-
   "dirSwitcher.failedToUpdateWorkingDir": {
     "defaultMessage": "Gagal mengemas kini direktori kerja"
   },
@@ -4569,6 +4567,12 @@
   },
   "transcriptWindow.loadEarlier": {
     "defaultMessage": "Muat mesej terdahulu"
+  },
+  "transcriptWindow.earlierOnServer": {
+    "defaultMessage": "Mesej terdahulu belum dimuatkan"
+  },
+  "transcriptWindow.loadingEarlier": {
+    "defaultMessage": "Memuatkan mesej terdahulu..."
   },
   "updateSection.autoDownload": {
     "defaultMessage": "Goose akan memuat turun kemas kini di latar belakang dan memasangnya pada kali seterusnya anda keluar atau mula semula."

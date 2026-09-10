@@ -926,8 +926,6 @@
   "dirSwitcher.enterPathInvalid": {
     "defaultMessage": "Working directory must be an absolute path"
   },
-
-
   "dirSwitcher.failedToUpdateWorkingDir": {
     "defaultMessage": "更新工作目录失败"
   },
@@ -4569,6 +4567,12 @@
   },
   "transcriptWindow.loadEarlier": {
     "defaultMessage": "加载更早的消息"
+  },
+  "transcriptWindow.earlierOnServer": {
+    "defaultMessage": "较早的消息未加载"
+  },
+  "transcriptWindow.loadingEarlier": {
+    "defaultMessage": "正在加载较早的消息..."
   },
   "updateSection.autoDownload": {
     "defaultMessage": "更新将在后台自动下载。"

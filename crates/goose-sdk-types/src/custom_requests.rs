@@ -684,6 +684,32 @@ pub struct GetSessionInfoResponse {
     pub session: SessionInfo,
 }
 
+/// Return a page of the session transcript addressed by absolute index in the
+/// session's user-visible ordering.
+///
+/// Indexes count from the start of the conversation so they stay stable while
+/// new messages are appended, which a from-the-end offset would not.
+#[derive(Debug, Default, Clone, Serialize, Deserialize, JsonSchema, JsonRpcRequest)]
+#[request(
+    method = "_goose/unstable/session/transcript/page",
+    response = GetSessionTranscriptPageResponse
+)]
+#[serde(rename_all = "camelCase")]
+pub struct GetSessionTranscriptPageRequest {
+    pub session_id: String,
+    /// Exclusive upper bound: the page ends immediately before this index.
+    pub before_index: u32,
+    pub limit: u32,
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize, JsonSchema, JsonRpcResponse)]
+#[serde(rename_all = "camelCase")]
+pub struct GetSessionTranscriptPageResponse {
+    pub messages: Vec<serde_json::Value>,
+    /// Index of the first returned message; `0` means the transcript is fully loaded.
+    pub start_index: u32,
+}
+
 /// Truncate a session conversation from the given message timestamp onward.
 #[derive(Debug, Default, Clone, Serialize, Deserialize, JsonSchema, JsonRpcRequest)]
 #[request(

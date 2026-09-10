@@ -10,6 +10,7 @@ import type { GooseExtension, SessionExportFormat, SessionImportSource } from '@
 import { getAcpClient } from './acpConnection';
 import type { ExtensionLoadResult } from '../types/extensions';
 import type { Session } from '../types/session';
+import type { Message } from '../types/message';
 import type { Recipe } from '../recipe';
 
 interface GooseSessionInfoMeta {
@@ -55,6 +56,8 @@ export interface LoadSessionMeta {
   userRecipeValues?: Record<string, string> | null;
   extensionResults?: ExtensionLoadResult[] | null;
   workingDir?: string;
+  /** User-visible messages the server skipped when replaying the tail window. */
+  replaySkipped?: number;
 }
 
 export interface AcpLoadSessionResult {
@@ -72,6 +75,7 @@ function parseSessionResponseMeta(rawMeta: unknown): LoadSessionMeta {
     userRecipeValues: meta.userRecipeValues,
     extensionResults: meta.extensionResults,
     workingDir: typeof meta.workingDir === 'string' ? meta.workingDir : undefined,
+    replaySkipped: typeof meta.replaySkipped === 'number' ? meta.replaySkipped : 0,
   };
 }
 
@@ -186,6 +190,31 @@ export async function acpGetSessionListItem(sessionId: string): Promise<SessionL
   return sessionInfoToListItem(response.session);
 }
 
+/**
+ * Messages replayed on session open. Older turns stay on the server until the
+ * reader asks for them, so opening a long chat neither floods the ACP
+ * transport nor hydrates the whole transcript into the renderer.
+ */
+export const ACP_SESSION_REPLAY_TAIL = 80;
+export const ACP_TRANSCRIPT_PAGE_SIZE = 80;
+
+export async function acpGetTranscriptPage(
+  sessionId: string,
+  beforeIndex: number,
+  limit = ACP_TRANSCRIPT_PAGE_SIZE
+): Promise<{ messages: Message[]; startIndex: number }> {
+  const client = await getAcpClient();
+  const response = await client.connection.agent.request<{
+    messages?: Message[];
+    startIndex?: number;
+  }>('_goose/unstable/session/transcript/page', { sessionId, beforeIndex, limit });
+
+  return {
+    messages: Array.isArray(response.messages) ? response.messages : [],
+    startIndex: typeof response.startIndex === 'number' ? response.startIndex : 0,
+  };
+}
+
 export async function acpLoadSession(sessionId: string): Promise<AcpLoadSessionResult> {
   const pendingLoad = inFlightSessionLoads.get(sessionId);
   if (pendingLoad) {
@@ -215,6 +244,7 @@ async function loadAcpSession(sessionId: string): Promise<AcpLoadSessionResult> 
     sessionId,
     cwd: initialSessionInfo.cwd,
     mcpServers: [],
+    _meta: { replayTail: ACP_SESSION_REPLAY_TAIL },
   });
   // Loading can populate missing provider/model metadata.
   const sessionInfoResponse = await client.goose.sessionInfo_unstable({ sessionId });

@@ -926,8 +926,6 @@
   "dirSwitcher.enterPathInvalid": {
     "defaultMessage": "Working directory must be an absolute path"
   },
-
-
   "dirSwitcher.failedToUpdateWorkingDir": {
     "defaultMessage": "作業ディレクトリの更新に失敗しました"
   },
@@ -4569,6 +4567,12 @@
   },
   "transcriptWindow.loadEarlier": {
     "defaultMessage": "以前のメッセージを読み込む"
+  },
+  "transcriptWindow.earlierOnServer": {
+    "defaultMessage": "以前のメッセージは読み込まれていません"
+  },
+  "transcriptWindow.loadingEarlier": {
+    "defaultMessage": "以前のメッセージを読み込んでいます..."
   },
   "updateSection.autoDownload": {
     "defaultMessage": "アップデートはバックグラウンドで自動的にダウンロードされます。"
