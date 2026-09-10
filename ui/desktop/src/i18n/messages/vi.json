@@ -926,8 +926,6 @@
   "dirSwitcher.enterPathInvalid": {
     "defaultMessage": "Working directory must be an absolute path"
   },
-
-
   "dirSwitcher.failedToUpdateWorkingDir": {
     "defaultMessage": "Không thể cập nhật thư mục làm việc"
   },
@@ -4569,6 +4567,12 @@
   },
   "transcriptWindow.loadEarlier": {
     "defaultMessage": "Tải các tin nhắn trước đó"
+  },
+  "transcriptWindow.earlierOnServer": {
+    "defaultMessage": "Các tin nhắn trước đó chưa được tải"
+  },
+  "transcriptWindow.loadingEarlier": {
+    "defaultMessage": "Đang tải các tin nhắn trước đó..."
   },
   "updateSection.autoDownload": {
     "defaultMessage": "Goose sẽ tải bản cập nhật ở chế độ nền và cài đặt vào lần tiếp theo khi bạn thoát hoặc khởi động lại."

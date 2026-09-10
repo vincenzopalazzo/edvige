@@ -25,6 +25,7 @@ import { cancelAcpPermissionRequestsForSession } from './permissionRequests';
 import { acpCancelPrompt, acpPromptSession } from './prompt';
 import {
   acpForkSession,
+  acpGetTranscriptPage,
   acpLoadSession,
   acpNewSession,
   acpTruncateSessionConversation,
@@ -52,6 +53,7 @@ export interface AcpChatSessionController {
     recipe?: AcpRecipeOptions
   ): Promise<Session>;
   loadSession(sessionId: string, options?: AcpLoadSessionOptions): Promise<void>;
+  loadEarlierMessages(sessionId: string): Promise<void>;
   restoreSession(sessionId: string): Promise<void>;
   submitMessage(
     sessionId: string,
@@ -162,10 +164,29 @@ async function loadSessionFromServer(
       new CustomEvent(AppEvents.SESSION_EXTENSIONS_LOADED, { detail: { sessionId } })
     );
     acpChatSessionActions.finishSessionLoad(sessionId, sessionInfoToSession(sessionInfo, meta));
+    acpChatSessionActions.setTranscriptStartIndex(sessionId, meta.replaySkipped ?? 0);
     options.onSessionLoaded?.();
   } catch (error) {
     console.error('Failed to load ACP session:', error);
     acpChatSessionActions.failSessionLoad(sessionId, formatAcpError(error));
+  }
+}
+
+async function loadEarlierMessages(sessionId: string): Promise<void> {
+  const snapshot = acpChatSessionStore.getSnapshot(sessionId);
+  if (!snapshot || snapshot.loadingEarlierMessages || snapshot.transcriptStartIndex <= 0) {
+    return;
+  }
+
+  const beforeIndex = snapshot.transcriptStartIndex;
+  acpChatSessionActions.startLoadEarlierMessages(sessionId);
+  try {
+    const { messages, startIndex } = await acpGetTranscriptPage(sessionId, beforeIndex);
+    acpChatSessionActions.finishLoadEarlierMessages(sessionId, messages, startIndex);
+  } catch (error) {
+    console.error('Failed to load earlier messages:', error);
+    // Keep the existing start index so the reader can retry the same page.
+    acpChatSessionActions.finishLoadEarlierMessages(sessionId, [], beforeIndex);
   }
 }
 
@@ -327,6 +348,7 @@ async function updateMessage(
 export const acpChatSessionController: AcpChatSessionController = {
   createSession,
   loadSession,
+  loadEarlierMessages,
   restoreSession,
   submitMessage,
   stop,

@@ -926,7 +926,6 @@
   "dirSwitcher.enterPathInvalid": {
     "defaultMessage": "Arbeitsverzeichnis muss ein absoluter Pfad sein"
   },
-
   "dirSwitcher.failedToUpdateWorkingDir": {
     "defaultMessage": "Aktualisieren des Arbeitsverzeichnisses fehlgeschlagen"
   },
@@ -4568,6 +4567,12 @@
   },
   "transcriptWindow.loadEarlier": {
     "defaultMessage": "Frühere Nachrichten laden"
+  },
+  "transcriptWindow.earlierOnServer": {
+    "defaultMessage": "Frühere Nachrichten sind nicht geladen"
+  },
+  "transcriptWindow.loadingEarlier": {
+    "defaultMessage": "Frühere Nachrichten werden geladen..."
   },
   "updateSection.autoDownload": {
     "defaultMessage": "Goose lädt das Update im Hintergrund herunter und installiert es beim nächsten Beenden oder Neustart."

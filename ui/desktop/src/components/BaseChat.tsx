@@ -114,6 +114,9 @@ export default function BaseChat({
     submitElicitationResponse,
     stopStreaming,
     retrySessionLoad,
+    loadEarlierMessages,
+    hasEarlierMessages,
+    loadingEarlierMessages,
     sessionLoadError,
     tokenState,
     notifications: toolCallNotifications,
@@ -471,6 +474,9 @@ export default function BaseChat({
                     onRenderingComplete={handleRenderingComplete}
                     onMessageUpdate={onMessageUpdate}
                     submitElicitationResponse={submitElicitationResponse}
+                    hasEarlierMessages={hasEarlierMessages}
+                    loadingEarlierMessages={loadingEarlierMessages}
+                    onLoadEarlierMessages={() => void loadEarlierMessages()}
                   />
                 </SearchView>
 

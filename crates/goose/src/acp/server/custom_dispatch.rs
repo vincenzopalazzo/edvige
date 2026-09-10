@@ -652,6 +652,14 @@ impl GooseAcpAgent {
         self.on_get_session_info(req).await
     }
 
+    #[custom_method(GetSessionTranscriptPageRequest)]
+    async fn dispatch_get_session_transcript_page(
+        &self,
+        req: GetSessionTranscriptPageRequest,
+    ) -> Result<GetSessionTranscriptPageResponse, agent_client_protocol::Error> {
+        self.on_get_session_transcript_page(req).await
+    }
+
     #[custom_method(TruncateSessionConversationRequest)]
     async fn dispatch_truncate_session_conversation(
         &self,

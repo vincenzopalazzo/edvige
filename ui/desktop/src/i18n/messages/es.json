@@ -926,8 +926,6 @@
   "dirSwitcher.enterPathInvalid": {
     "defaultMessage": "Working directory must be an absolute path"
   },
-
-
   "dirSwitcher.failedToUpdateWorkingDir": {
     "defaultMessage": "No se pudo actualizar el directorio de trabajo"
   },
@@ -4569,6 +4567,12 @@
   },
   "transcriptWindow.loadEarlier": {
     "defaultMessage": "Cargar mensajes anteriores"
+  },
+  "transcriptWindow.earlierOnServer": {
+    "defaultMessage": "Los mensajes anteriores no están cargados"
+  },
+  "transcriptWindow.loadingEarlier": {
+    "defaultMessage": "Cargando mensajes anteriores..."
   },
   "updateSection.autoDownload": {
     "defaultMessage": "La actualización se descargará automáticamente en segundo plano."

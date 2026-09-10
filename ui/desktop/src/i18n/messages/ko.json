@@ -926,8 +926,6 @@
   "dirSwitcher.enterPathInvalid": {
     "defaultMessage": "Working directory must be an absolute path"
   },
-
-
   "dirSwitcher.failedToUpdateWorkingDir": {
     "defaultMessage": "작업 디렉터리를 업데이트하지 못했습니다."
   },
@@ -4569,6 +4567,12 @@
   },
   "transcriptWindow.loadEarlier": {
     "defaultMessage": "이전 메시지 불러오기"
+  },
+  "transcriptWindow.earlierOnServer": {
+    "defaultMessage": "이전 메시지가 로드되지 않았습니다"
+  },
+  "transcriptWindow.loadingEarlier": {
+    "defaultMessage": "이전 메시지를 불러오는 중..."
   },
   "updateSection.autoDownload": {
     "defaultMessage": "goose가 백그라운드에서 업데이트를 다운로드하며, 종료하거나 다시 시작할 때 설치합니다."

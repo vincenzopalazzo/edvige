@@ -26,6 +26,13 @@ export interface AcpChatSessionSnapshot {
   activePromptAttemptId: string | null;
   activeRunId: string | null;
   pendingCancelPromptAttemptId: string | null;
+  /**
+   * Index of the oldest loaded message within the full transcript. `0` means
+   * the whole transcript is loaded; higher means earlier pages remain on the
+   * server.
+   */
+  transcriptStartIndex: number;
+  loadingEarlierMessages: boolean;
 }
 
 type SnapshotListener = (snapshot: AcpChatSessionSnapshot) => void;
@@ -90,6 +97,13 @@ export interface AcpChatSessionActions {
   ): AcpChatSessionSnapshot;
 
   setMessages(sessionId: string, messages: Message[]): AcpChatSessionSnapshot;
+  setTranscriptStartIndex(sessionId: string, transcriptStartIndex: number): AcpChatSessionSnapshot;
+  startLoadEarlierMessages(sessionId: string): AcpChatSessionSnapshot;
+  finishLoadEarlierMessages(
+    sessionId: string,
+    earlierMessages: Message[],
+    transcriptStartIndex: number
+  ): AcpChatSessionSnapshot;
   addPendingLocalSteerMessage(sessionId: string, message: Message): AcpChatSessionSnapshot;
   setChatState(sessionId: string, chatState: ChatState): AcpChatSessionSnapshot;
   resolveUserInputRequest(
@@ -182,6 +196,8 @@ function createAcpChatSessionStoreInternal(): AcpChatSessionStoreInternal {
       activePromptAttemptId: null,
       activeRunId: null,
       pendingCancelPromptAttemptId: null,
+      transcriptStartIndex: 0,
+      loadingEarlierMessages: false,
       promptCancellationRestoreState: null,
       pendingUserInputRequestIds: new Set(),
       pendingLocalSteerMessageIds: new Set(),
@@ -248,6 +264,41 @@ function createAcpChatSessionStoreInternal(): AcpChatSessionStoreInternal {
     entry.messages = publishMessages(entry, messages);
     retainPendingLocalSteerMessageIds(entry);
     entry.adapter = createAdapterForEntry(entry);
+    return notify(sessionId, entry);
+  };
+
+  const setTranscriptStartIndex: AcpChatSessionActions['setTranscriptStartIndex'] = (
+    sessionId,
+    transcriptStartIndex
+  ) => {
+    const entry = getOrCreateEntry(sessionId);
+    entry.transcriptStartIndex = transcriptStartIndex;
+    return notify(sessionId, entry);
+  };
+
+  const startLoadEarlierMessages: AcpChatSessionActions['startLoadEarlierMessages'] = (
+    sessionId
+  ) => {
+    const entry = getOrCreateEntry(sessionId);
+    entry.loadingEarlierMessages = true;
+    return notify(sessionId, entry);
+  };
+
+  const finishLoadEarlierMessages: AcpChatSessionActions['finishLoadEarlierMessages'] = (
+    sessionId,
+    earlierMessages,
+    transcriptStartIndex
+  ) => {
+    const entry = getOrCreateEntry(sessionId);
+    entry.loadingEarlierMessages = false;
+    entry.transcriptStartIndex = transcriptStartIndex;
+    if (earlierMessages.length > 0) {
+      entry.messages = publishMessages(entry, [
+        ...earlierMessages.map(cloneMessage),
+        ...entry.messages,
+      ]);
+      entry.adapter = createAdapterForEntry(entry);
+    }
     return notify(sessionId, entry);
   };
 
@@ -553,6 +604,9 @@ function createAcpChatSessionStoreInternal(): AcpChatSessionStoreInternal {
     failSessionLoad,
     setSessionLoadError,
     setMessages,
+    setTranscriptStartIndex,
+    startLoadEarlierMessages,
+    finishLoadEarlierMessages,
     addPendingLocalSteerMessage,
     setChatState,
     resolveUserInputRequest,
@@ -633,6 +687,9 @@ function actionsFromStore(store: AcpChatSessionStoreInternal): AcpChatSessionAct
     failSessionLoad: store.failSessionLoad,
     setSessionLoadError: store.setSessionLoadError,
     setMessages: store.setMessages,
+    setTranscriptStartIndex: store.setTranscriptStartIndex,
+    startLoadEarlierMessages: store.startLoadEarlierMessages,
+    finishLoadEarlierMessages: store.finishLoadEarlierMessages,
     addPendingLocalSteerMessage: store.addPendingLocalSteerMessage,
     setChatState: store.setChatState,
     resolveUserInputRequest: store.resolveUserInputRequest,
@@ -780,6 +837,8 @@ function snapshotFromEntry(entry: StoreEntry): AcpChatSessionSnapshot {
     activePromptAttemptId: entry.activePromptAttemptId,
     activeRunId: entry.activeRunId,
     pendingCancelPromptAttemptId: entry.pendingCancelPromptAttemptId,
+    transcriptStartIndex: entry.transcriptStartIndex,
+    loadingEarlierMessages: entry.loadingEarlierMessages,
   };
 }
 

@@ -110,6 +110,18 @@ fn replay_start_index(messages: &[Message], tail: usize) -> usize {
         .unwrap_or(0)
 }
 
+/// Upper bound on one transcript page, so a client cannot pull an entire long
+/// conversation into a single response and re-create the flood that windowing
+/// the replay avoids.
+const TRANSCRIPT_PAGE_MAX: usize = 500;
+
+/// Half-open `[start, end)` bounds of the transcript page ending just before
+/// `before_index`, clamped to a transcript of `total` messages.
+fn transcript_page_bounds(total: usize, before_index: usize, limit: usize) -> (usize, usize) {
+    let end = before_index.min(total);
+    (end.saturating_sub(limit.min(TRANSCRIPT_PAGE_MAX)), end)
+}
+
 fn replay_tail_from_meta(meta: Option<&Meta>) -> Option<usize> {
     meta.and_then(|m| m.get("replayTail"))
         .and_then(|v| v.as_u64())
@@ -301,6 +313,51 @@ impl GooseAcpAgent {
         Ok(())
     }
 
+    pub(super) async fn on_get_session_transcript_page(
+        &self,
+        req: GetSessionTranscriptPageRequest,
+    ) -> Result<GetSessionTranscriptPageResponse, agent_client_protocol::Error> {
+        let session_id = req.session_id.trim();
+        if session_id.is_empty() {
+            return Err(
+                agent_client_protocol::Error::invalid_params().data("sessionId cannot be empty")
+            );
+        }
+
+        let session = self
+            .session_manager
+            .get_session(session_id, true)
+            .await
+            .map_err(|_| {
+                agent_client_protocol::Error::resource_not_found(Some(session_id.to_string()))
+                    .data(format!("Session not found: {}", session_id))
+            })?;
+
+        // Indexed against the same list session/load replays from, so a page
+        // stitches onto the replayed window without gaps or repeats.
+        let messages = session
+            .conversation
+            .as_ref()
+            .map(messages_for_acp_replay)
+            .unwrap_or_default();
+
+        let (start_index, end_index) = transcript_page_bounds(
+            messages.len(),
+            req.before_index as usize,
+            req.limit as usize,
+        );
+        let page = messages[start_index..end_index]
+            .iter()
+            .map(serde_json::to_value)
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .internal_err_ctx("Failed to serialize transcript page")?;
+
+        Ok(GetSessionTranscriptPageResponse {
+            messages: page,
+            start_index: start_index as u32,
+        })
+    }
+
     pub(super) async fn handle_load_session(
         &self,
         cx: &ConnectionTo<Client>,
@@ -456,6 +513,52 @@ mod tests {
             panic!("expected resumed effort capability");
         };
         assert_eq!(capability.current.as_deref(), Some("high"));
+    }
+
+    #[test]
+    fn transcript_page_stitches_onto_the_replayed_window() {
+        let messages: Vec<Message> = (0..250)
+            .map(|index| {
+                if index % 2 == 0 {
+                    Message::user().with_text(format!("m-{index}"))
+                } else {
+                    Message::assistant().with_text(format!("m-{index}"))
+                }
+            })
+            .collect();
+
+        let skipped = replay_start_index(&messages, 80);
+        assert!(skipped > 0, "a 250-message history should be windowed");
+
+        let (start, end) = transcript_page_bounds(messages.len(), skipped, 80);
+        assert_eq!(end, skipped, "the page must end where the replay begins");
+        assert_eq!(start, skipped - 80);
+
+        let mut cursor = start;
+        let mut remaining = start;
+        while cursor > 0 {
+            let (older_start, older_end) = transcript_page_bounds(messages.len(), cursor, 80);
+            assert_eq!(older_end, cursor, "pages must be disjoint and adjacent");
+            remaining -= older_end - older_start;
+            cursor = older_start;
+        }
+        assert_eq!(
+            remaining, 0,
+            "paging back must cover the transcript exactly once"
+        );
+    }
+
+    #[test]
+    fn transcript_page_bounds_clamp_out_of_range_requests() {
+        assert_eq!(transcript_page_bounds(10, 999, 80), (0, 10));
+        assert_eq!(transcript_page_bounds(10, 0, 80), (0, 0));
+        assert_eq!(transcript_page_bounds(0, 5, 80), (0, 0));
+    }
+
+    #[test]
+    fn transcript_page_bounds_cap_oversized_limits() {
+        let (start, end) = transcript_page_bounds(10_000, 9_000, usize::MAX);
+        assert_eq!(end - start, TRANSCRIPT_PAGE_MAX);
     }
 
     #[test]
