@@ -333,7 +333,9 @@ impl MessageContentBlock {
     pub fn is_visible_output(&self) -> bool {
         match self {
             MessageContentBlock::Text(text) => !text.text.trim().is_empty(),
-            MessageContentBlock::Image(_) | MessageContentBlock::ToolRequest(_) => true,
+            MessageContentBlock::Image(_)
+            | MessageContentBlock::Document(_)
+            | MessageContentBlock::ToolRequest(_) => true,
             MessageContentBlock::Thinking(_)
             | MessageContentBlock::RedactedThinking(_)
             | MessageContentBlock::ToolResponse(_)
@@ -1946,14 +1948,18 @@ mod tests {
         let projected = message.user_visible_content();
 
         assert_eq!(projected.as_concat_text(), "shared text");
-        assert!(projected
-            .content
-            .iter()
-            .any(|content| matches!(content, MessageContentBlock::Thinking(_))));
-        assert!(!projected
-            .content
-            .iter()
-            .any(|content| matches!(content, MessageContentBlock::Image(_))));
+        assert!(
+            projected
+                .content
+                .iter()
+                .any(|content| matches!(content, MessageContentBlock::Thinking(_)))
+        );
+        assert!(
+            !projected
+                .content
+                .iter()
+                .any(|content| matches!(content, MessageContentBlock::Image(_)))
+        );
         let tool_response = projected
             .content
             .iter()
