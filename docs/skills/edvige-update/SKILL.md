@@ -40,7 +40,9 @@ git rebase aaif-goose/main               # never merge
 | `crates/goose/src/agents/state_machine/ops_output_limit.rs` | Old `GooseEffect::ReplaceConversation { conversation, usage }` is gone. Use `GooseEffect::CompactConversation { conversation, usage }` (records usage + replaces history + emits `HistoryReplaced`). |
 | `crates/goose-provider-types/.../message.rs` | Fork's `is_visible_output()` must cover upstream's new enum variants. `Document` counts as visible output (`=> true`). |
 
-After the rebase: `cargo fmt` the touched files, then compile-check.
+After the rebase: `cargo fmt --all` (NOT `cargo fmt -- <file>` — the bare-file form skips the
+edition config and emits 2024-style import/macro formatting that pollutes the commit), then
+`cargo fmt --all --check` must be clean, then compile-check.
 
 ## 3. Compile checks
 
