@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::http::{HeaderMap, HeaderName};
+use rmcp::RoleClient;
 use rmcp::model::{
     CallToolResult, ErrorCode, ErrorData, GetPromptResult, ProtocolVersion, ServerInfo,
     ServerNotification,
@@ -15,9 +16,8 @@ use rmcp::transport::streamable_http_client::{
     StreamableHttpClientTransportConfig, StreamableHttpError,
 };
 use rmcp::transport::{DynamicTransportError, IntoTransport, StreamableHttpClientTransport};
-use rmcp::RoleClient;
 use serde_json::Value;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{Mutex, mpsc};
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
 
@@ -25,7 +25,7 @@ use super::super::extension::{ExtensionError, ExtensionResult};
 use super::super::mcp_client::{ConnectContext, McpClient, McpClientTrait};
 use super::super::tool_execution::ToolCallContext;
 use crate::oauth::{
-    oauth_flow, oauth_flow_with_challenge, GooseCredentialStore, StaticOAuthClientConfig,
+    GooseCredentialStore, StaticOAuthClientConfig, oauth_flow, oauth_flow_with_challenge,
 };
 use oauth2::TokenResponse;
 
@@ -654,7 +654,9 @@ pub(super) async fn connect(
     .await;
 
     if !should_attempt_oauth_fallback(&client_res) {
-        return Ok(Box::new(OAuthStepUpClient::new(client_res?, params, None).await));
+        return Ok(Box::new(
+            OAuthStepUpClient::new(client_res?, params, None).await,
+        ));
     }
 
     let challenge = auth_challenge_from_result(&client_res);
@@ -1035,9 +1037,11 @@ mod tests {
             )
             .unwrap_err();
 
-            assert!(error
-                .to_string()
-                .contains("client_secret_key requires client_id"));
+            assert!(
+                error
+                    .to_string()
+                    .contains("client_secret_key requires client_id")
+            );
         }
 
         #[test]
