@@ -506,7 +506,6 @@ export const zSessionActivityResponse_unstable = z.object({
 });
 
 /**
- * List all available Goose prompt templates.
  * List all available goose prompt templates.
  */
 export const zListPromptsRequest_unstable = z.record(z.string(), z.unknown());
