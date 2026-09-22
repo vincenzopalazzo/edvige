@@ -1948,18 +1948,14 @@ mod tests {
         let projected = message.user_visible_content();
 
         assert_eq!(projected.as_concat_text(), "shared text");
-        assert!(
-            projected
-                .content
-                .iter()
-                .any(|content| matches!(content, MessageContentBlock::Thinking(_)))
-        );
-        assert!(
-            !projected
-                .content
-                .iter()
-                .any(|content| matches!(content, MessageContentBlock::Image(_)))
-        );
+        assert!(projected
+            .content
+            .iter()
+            .any(|content| matches!(content, MessageContentBlock::Thinking(_))));
+        assert!(!projected
+            .content
+            .iter()
+            .any(|content| matches!(content, MessageContentBlock::Image(_))));
         let tool_response = projected
             .content
             .iter()

@@ -5,7 +5,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::http::{HeaderMap, HeaderName};
-use rmcp::RoleClient;
 use rmcp::model::{
     CallToolResult, ErrorCode, ErrorData, GetPromptResult, ProtocolVersion, ServerInfo,
     ServerNotification,
@@ -16,8 +15,9 @@ use rmcp::transport::streamable_http_client::{
     StreamableHttpClientTransportConfig, StreamableHttpError,
 };
 use rmcp::transport::{DynamicTransportError, IntoTransport, StreamableHttpClientTransport};
+use rmcp::RoleClient;
 use serde_json::Value;
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::{mpsc, Mutex};
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
 
@@ -25,7 +25,7 @@ use super::super::extension::{ExtensionError, ExtensionResult};
 use super::super::mcp_client::{ConnectContext, McpClient, McpClientTrait};
 use super::super::tool_execution::ToolCallContext;
 use crate::oauth::{
-    GooseCredentialStore, StaticOAuthClientConfig, oauth_flow, oauth_flow_with_challenge,
+    oauth_flow, oauth_flow_with_challenge, GooseCredentialStore, StaticOAuthClientConfig,
 };
 use oauth2::TokenResponse;
 
@@ -1037,11 +1037,9 @@ mod tests {
             )
             .unwrap_err();
 
-            assert!(
-                error
-                    .to_string()
-                    .contains("client_secret_key requires client_id")
-            );
+            assert!(error
+                .to_string()
+                .contains("client_secret_key requires client_id"));
         }
 
         #[test]
