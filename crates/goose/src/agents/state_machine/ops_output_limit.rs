@@ -18,8 +18,8 @@ use tracing_futures::Instrument;
 use crate::agents::state_machine::ops_llm::{chat_span, record_chat_usage};
 use crate::agents::state_machine::ops_toolcalling::pending_tool_requests;
 use crate::agents::state_machine::{
-    Emitter, GooseEffect, Operation, OperationResult, applied, messages_since_kickoff,
-    not_applicable, yielded,
+    applied, messages_since_kickoff, not_applicable, yielded, Emitter, GooseEffect, Operation,
+    OperationResult,
 };
 use crate::context_mgmt::compact_messages;
 use crate::conversation::message::{Message, SystemNotificationType};
