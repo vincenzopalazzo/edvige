@@ -13,9 +13,8 @@ use rmcp::transport::streamable_http_client::{
     StreamableHttpClientTransportConfig, StreamableHttpError,
 };
 use rmcp::transport::{DynamicTransportError, IntoTransport, StreamableHttpClientTransport};
-use rmcp::RoleClient;
 use serde_json::Value;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{Mutex, mpsc};
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
 
@@ -1122,9 +1121,11 @@ mod tests {
             )
             .unwrap_err();
 
-            assert!(error
-                .to_string()
-                .contains("client_secret_key requires client_id"));
+            assert!(
+                error
+                    .to_string()
+                    .contains("client_secret_key requires client_id")
+            );
         }
 
         #[test]
