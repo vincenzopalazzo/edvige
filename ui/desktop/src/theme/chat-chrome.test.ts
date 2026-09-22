@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { catppuccinFlavors, getCatppuccinAccentColor } from './catppuccin';
 import { getChatChromeTokens } from './chat-chrome';
@@ -41,6 +44,21 @@ describe('chat chrome tokens', () => {
       expect(chrome['--user-message-bubble-background']).not.toBe('#171d30');
       expect(chrome['--agent-message-bubble-background']).not.toBe('#1f2126');
     }
+  });
+
+  it('keeps theme bubble colors ahead of the Tailwind utilities on the same node', () => {
+    const css = readFileSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), '../styles/main.css'),
+      'utf8'
+    );
+    const bubble = css.match(/\.user-message-bubble \{[^}]+\}/)?.[0] ?? '';
+
+    expect(bubble).toContain(
+      'background-color: var(--user-message-bubble-background, var(--color-text-primary)) !important;'
+    );
+    expect(bubble).toContain(
+      'color: var(--user-message-bubble-foreground, var(--color-background-primary)) !important;'
+    );
   });
 
   it('applies chat chrome to the document root with the theme', () => {

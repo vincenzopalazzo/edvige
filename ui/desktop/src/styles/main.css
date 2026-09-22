@@ -585,10 +585,14 @@ pre:has(> code.bg-inline-code) {
   margin-bottom: 0 !important;
 }
 
+/* !important: Tailwind utilities .bg-text-primary / .text-background-primary are
+   also on the bubble and are generated later in this sheet. Without this, those
+   utilities paint over the theme chrome tokens (Catppuccin user text disappears
+   on surface1). */
 .user-message-bubble {
   --code-block-background: var(--user-message-code-background, #282c34);
-  background-color: var(--user-message-bubble-background, var(--color-text-primary));
-  color: var(--user-message-bubble-foreground, var(--color-background-primary));
+  background-color: var(--user-message-bubble-background, var(--color-text-primary)) !important;
+  color: var(--user-message-bubble-foreground, var(--color-background-primary)) !important;
 }
 
 .user-message pre {
@@ -616,7 +620,7 @@ pre:has(> code.bg-inline-code) {
 }
 
 .agent-message-bubble {
-  background-color: var(--agent-message-bubble-background, transparent);
+  background-color: var(--agent-message-bubble-background, transparent) !important;
   border-radius: var(--agent-message-bubble-radius, 0);
   padding: var(--agent-message-bubble-padding, 0);
 }
