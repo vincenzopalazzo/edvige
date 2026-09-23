@@ -344,6 +344,10 @@ mod tests {
             Some("x-ai/grok-4.5".to_string())
         );
         assert_eq!(
+            map_to_canonical_model("xai", "grok-4.7", r),
+            Some("x-ai/grok-4.7".to_string())
+        );
+        assert_eq!(
             map_to_canonical_model("openai", "gpt-4-turbo-2024-04-09", r),
             Some("openai/gpt-4-turbo".to_string())
         );

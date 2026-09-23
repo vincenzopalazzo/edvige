@@ -1858,7 +1858,9 @@ pub fn is_openai_responses_model(model_name: &str) -> bool {
 pub fn supports_xai_reasoning_effort(model_name: &str) -> bool {
     let model_name = model_name.to_ascii_lowercase();
 
-    model_name.starts_with("grok-4.5")
+    model_name.starts_with("grok-4.7")
+        || model_name.starts_with("grok-4.6")
+        || model_name.starts_with("grok-4.5")
         || model_name.starts_with("grok-4.3")
         || model_name.starts_with("grok-3-mini")
 }
@@ -1886,12 +1888,14 @@ pub fn xai_reasoning_effort_for_thinking(
     let model_name = model_name.to_ascii_lowercase();
     let supports_none = model_name.starts_with("grok-4.3");
     let supports_medium = !model_name.starts_with("grok-3-mini");
+    let supports_xhigh = model_name.starts_with("grok-4.6") || model_name.starts_with("grok-4.7");
 
     match effort {
         ThinkingEffort::Off if supports_none => Some("none".to_string()),
         ThinkingEffort::Off => Some("low".to_string()),
         ThinkingEffort::Low => Some("low".to_string()),
         ThinkingEffort::Medium if supports_medium => Some("medium".to_string()),
+        ThinkingEffort::Max if supports_xhigh => Some("xhigh".to_string()),
         ThinkingEffort::Medium | ThinkingEffort::High | ThinkingEffort::Max => {
             Some("high".to_string())
         }
@@ -5486,7 +5490,13 @@ data: [DONE]"#;
 
     #[test]
     fn test_xai_reasoning_model_capabilities_are_model_specific() {
-        for model in ["grok-4.5", "grok-4.3", "grok-3-mini"] {
+        for model in [
+            "grok-4.7",
+            "grok-4.6",
+            "grok-4.5",
+            "grok-4.3",
+            "grok-3-mini",
+        ] {
             assert!(supports_xai_reasoning_effort(model), "{model}");
             assert!(is_xai_reasoning_model(model), "{model}");
         }
@@ -5534,6 +5544,14 @@ data: [DONE]"#;
         assert_eq!(
             xai_reasoning_effort_for_thinking("grok-4.5", ThinkingEffort::Max),
             Some("high".to_string())
+        );
+        assert_eq!(
+            xai_reasoning_effort_for_thinking("grok-4.7", ThinkingEffort::Max),
+            Some("xhigh".to_string())
+        );
+        assert_eq!(
+            xai_reasoning_effort_for_thinking("grok-4.6", ThinkingEffort::Off),
+            Some("low".to_string())
         );
     }
 

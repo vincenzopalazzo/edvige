@@ -306,7 +306,16 @@ mod tests {
         }
     }
 
-    #[test]
+        #[test]
+    fn xai_grok_4_7_resolves_with_context_window() {
+        let canonical = maybe_get_canonical_model("xai", "grok-4.7")
+            .expect("grok-4.7 should resolve via the bundled x-ai catalog");
+        assert_eq!(canonical.limit.context, 500_000);
+        assert_eq!(canonical.limit.output, Some(500_000));
+        assert_eq!(canonical.reasoning, Some(true));
+    }
+
+#[test]
     fn kimi_code_k3_resolves_with_reasoning_and_context_limit() {
         let canonical = maybe_get_canonical_model("kimi_code", "k3")
             .expect("kimi_code/k3 should resolve via kimi-code-plan-cn provider mapping");
