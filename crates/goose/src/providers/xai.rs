@@ -6,7 +6,7 @@ use futures::future::BoxFuture;
 
 const XAI_PROVIDER_NAME: &str = "xai";
 pub const XAI_API_HOST: &str = "https://api.x.ai/v1";
-pub const XAI_DEFAULT_MODEL: &str = "grok-4.5";
+pub const XAI_DEFAULT_MODEL: &str = "grok-4.7";
 
 pub const XAI_DOC_URL: &str = "https://docs.x.ai/docs/overview";
 
@@ -71,6 +71,16 @@ mod tests {
     #[test]
     fn current_xai_models_use_canonical_metadata() {
         let metadata = XaiProvider::metadata();
+
+        assert_eq!(metadata.default_model, "grok-4.7");
+
+        let grok_4_7 = metadata
+            .known_models
+            .iter()
+            .find(|model| model.name == "grok-4.7")
+            .expect("grok-4.7 should be a known xAI model");
+        assert_eq!(grok_4_7.context_limit, Some(500_000));
+        assert!(grok_4_7.reasoning);
 
         let grok_4_5 = metadata
             .known_models
