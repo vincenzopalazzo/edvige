@@ -392,6 +392,10 @@ mod tests {
             Some("openai/gpt-4.1".to_string())
         );
         assert_eq!(
+            map_to_canonical_model("xai", "grok-4.7", &r),
+            Some("x-ai/grok-4.7".to_string())
+        );
+        assert_eq!(
             map_to_canonical_model("chatgpt_codex", "gpt-5.6-sol", &r),
             Some("openai/gpt-5.6-sol".to_string())
         );
