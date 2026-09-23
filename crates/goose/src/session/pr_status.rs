@@ -89,7 +89,7 @@ pub fn find_conversation_pr_refs(conversation: &Conversation) -> Vec<GitHubPrRef
 mod tests {
     use super::*;
     use crate::conversation::message::Message;
-    use rmcp::model::{CallToolResult, Content};
+    use rmcp::model::{CallToolResult, ContentBlock};
 
     #[test]
     fn extracts_pr_refs_from_text() {
@@ -161,7 +161,7 @@ mod tests {
         );
         conversation.push(Message::user().with_tool_response(
             "call_1",
-            Ok(CallToolResult::success(vec![Content::text(
+            Ok(CallToolResult::success(vec![ContentBlock::text(
                 "https://github.com/block/goose/pull/10670",
             )])),
         ));
