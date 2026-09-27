@@ -38,6 +38,8 @@ const MUSE_CODE_DOC_URL: &str = "https://ai.developer.meta.com/docs/muse-code/su
 const MUSE_CODE_USER_AGENT: &str = "goose-muse-code";
 
 const MUSE_CODE_KNOWN_MODELS: &[&str] = &[
+    "muse-spark-1.3",
+    "muse-spark-1.3-contributor",
     "muse-spark-1.2",
     "muse-spark-1.1",
     "muse-spark-1.2-contributor",
@@ -492,7 +494,7 @@ impl ProviderDescriptor for MuseCodeProviderDef {
             MUSE_CODE_PROVIDER_NAME,
             "Meta Muse Code",
             "Muse Spark models from a Meta Muse Code subscription",
-            "muse-spark-1.2",
+            "muse-spark-1.3",
             known_models(),
             MUSE_CODE_DOC_URL,
             vec![
@@ -616,7 +618,7 @@ mod tests {
     fn metadata_declares_subscription_models_and_oauth() {
         let metadata = MuseCodeProviderDef::metadata();
         assert_eq!(metadata.name, "muse_code");
-        assert_eq!(metadata.default_model, "muse-spark-1.2");
+        assert_eq!(metadata.default_model, "muse-spark-1.3");
         assert_eq!(
             metadata
                 .known_models
@@ -624,6 +626,8 @@ mod tests {
                 .map(|model| model.name.as_str())
                 .collect::<Vec<_>>(),
             vec![
+                "muse-spark-1.3",
+                "muse-spark-1.3-contributor",
                 "muse-spark-1.2",
                 "muse-spark-1.1",
                 "muse-spark-1.2-contributor"
@@ -635,7 +639,13 @@ mod tests {
                 .iter()
                 .map(|model| model.context_limit)
                 .collect::<Vec<_>>(),
-            vec![Some(1_048_576), Some(1_000_000), Some(1_048_576)]
+            vec![
+                Some(1_048_576),
+                Some(1_048_576),
+                Some(1_048_576),
+                Some(1_048_576),
+                Some(1_048_576)
+            ]
         );
         assert!(
             metadata.known_models.iter().all(|model| model.reasoning),
