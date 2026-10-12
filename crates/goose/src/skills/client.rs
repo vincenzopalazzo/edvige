@@ -1,7 +1,8 @@
 use super::discover_skills_with_config;
 use super::loaded_skill_context_with_args;
-use crate::agents::extension::PlatformExtensionContext;
+use crate::agents::extension_manager::ExtensionLease;
 use crate::agents::mcp_client::{Error, McpClientTrait};
+use crate::agents::platform_extensions::PlatformExtensionContext;
 use crate::agents::ToolCallContext;
 use crate::config::Config;
 use async_trait::async_trait;
@@ -11,6 +12,7 @@ use rmcp::model::{
     ServerCapabilities, ServerNotification, Tool,
 };
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
@@ -18,28 +20,31 @@ pub static EXTENSION_NAME: &str = "skills";
 
 pub struct SkillsClient {
     info: InitializeResult,
-    working_dir: PathBuf,
     exclude_builtin_skills: bool,
     config: &'static Config,
+    extension_manager: Option<std::sync::Weak<crate::agents::extension_manager::ExtensionManager>>,
 }
 
-impl SkillsClient {
-    pub fn new(context: PlatformExtensionContext) -> anyhow::Result<Self> {
-        let working_dir = context
-            .session
-            .as_ref()
-            .map(|s| s.working_dir.clone())
-            .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
-
+impl Default for SkillsClient {
+    fn default() -> Self {
         let info = InitializeResult::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new(EXTENSION_NAME, "1.0.0").with_title("Skills"));
 
-        Ok(Self {
+        Self {
             info,
-            working_dir,
             exclude_builtin_skills: false,
             config: Config::global(),
-        })
+            extension_manager: None,
+        }
+    }
+}
+
+impl SkillsClient {
+    pub fn new(context: PlatformExtensionContext) -> Self {
+        Self {
+            extension_manager: context.extension_manager,
+            ..Self::default()
+        }
     }
 
     /// Controls whether Goose's bundled skills are exposed by this client.
@@ -55,13 +60,137 @@ impl SkillsClient {
         self
     }
 
-    fn discover_skills(&self) -> Vec<SourceEntry> {
-        discover_skills_with_config(Some(&self.working_dir), self.config)
+    async fn discover_skills(
+        &self,
+        session_id: &str,
+        working_dir: &Path,
+        lease: Option<&ExtensionLease>,
+    ) -> Vec<SourceEntry> {
+        let filesystem = discover_skills_with_config(Some(working_dir), self.config)
             .into_iter()
             .filter(|skill| {
                 !self.exclude_builtin_skills || skill.source_type != SourceType::BuiltinSkill
             })
-            .collect()
+            .collect();
+        let mut mcp = match lease {
+            Some(lease) => lease.list_mcp_skills().await,
+            None => Vec::new(),
+        };
+        if let Some(lease) = lease {
+            mcp.extend(
+                super::mcp::held_skill_records(session_id)
+                    .into_iter()
+                    .filter(|skill| lease.is_enabled(&skill.extension_name)),
+            );
+        }
+        super::mcp::merge_skill_entries(filesystem, mcp)
+    }
+
+    fn tool_error(message: impl std::fmt::Display) -> CallToolResult {
+        CallToolResult::error(vec![ContentBlock::text(message.to_string())])
+    }
+
+    async fn load_mcp_skill(
+        &self,
+        session_id: &str,
+        skill: &SourceEntry,
+        args: Option<&str>,
+        lease: &ExtensionLease,
+    ) -> CallToolResult {
+        let Some(extension_name) = skill
+            .properties
+            .get("mcpExtension")
+            .and_then(|value| value.as_str())
+        else {
+            return Self::tool_error(format!("Skill '{}' has no serving extension.", skill.name));
+        };
+        let manifest = match lease.send_skill_get(extension_name, &skill.path).await {
+            Ok(manifest) => manifest,
+            Err(error) => return Self::tool_error(error),
+        };
+        self.load_mcp_skill_with_manifest(session_id, skill, args, lease, manifest)
+            .await
+    }
+
+    async fn load_mcp_skill_with_manifest(
+        &self,
+        session_id: &str,
+        skill: &SourceEntry,
+        args: Option<&str>,
+        lease: &ExtensionLease,
+        manifest: super::mcp::SkillRecord,
+    ) -> CallToolResult {
+        if let Err(error) = super::mcp::ensure_loadable(&manifest) {
+            return Self::tool_error(error);
+        }
+        let extension_name = manifest.extension_name.as_str();
+        let markdown = match lease.read_skill_text(extension_name, &skill.path).await {
+            Ok(markdown) => markdown,
+            Err(error) => return Self::tool_error(error),
+        };
+        if let Err(error) = super::mcp::verify_skill_markdown(&manifest, &markdown) {
+            return Self::tool_error(error);
+        }
+        let Some(body) = super::mcp::skill_markdown_body(&markdown) else {
+            return Self::tool_error(super::mcp::SkillLoadError::MissingBody {
+                uri: manifest.uri.clone(),
+            });
+        };
+        let mut loaded = skill.clone();
+        loaded.content = body.to_string();
+        loaded.supporting_files.clear();
+        match loaded_skill_context_with_args(&loaded, args) {
+            Ok(rendered) => {
+                let tagged = super::mcp::origin_tagged_context(
+                    &manifest.extension_name,
+                    &manifest.uri,
+                    &rendered,
+                );
+                super::mcp::hold_skill(session_id, manifest);
+                CallToolResult::success(vec![ContentBlock::text(tagged)])
+            }
+            Err(error) => Self::tool_error(format!("Failed to parse skill arguments: {error}")),
+        }
+    }
+
+    async fn load_mcp_supporting_file(
+        &self,
+        session_id: &str,
+        skill: &SourceEntry,
+        relative_path: &str,
+        lease: &ExtensionLease,
+    ) -> CallToolResult {
+        let Some(extension_name) = skill
+            .properties
+            .get("mcpExtension")
+            .and_then(|value| value.as_str())
+        else {
+            return Self::tool_error(format!("Skill '{}' has no serving extension.", skill.name));
+        };
+        let manifest = match super::mcp::held_skill(session_id, extension_name, &skill.path) {
+            Some(manifest) => manifest,
+            None => {
+                return Self::tool_error(format!(
+                    "Load '{}' before reading its supporting files.",
+                    skill.name
+                ));
+            }
+        };
+        let uri = match super::mcp::resolve_relative_uri(&manifest, relative_path) {
+            Ok(uri) => uri,
+            Err(error) => return Self::tool_error(error),
+        };
+        if let Err(error) = super::mcp::listed_file(&manifest, &uri) {
+            return Self::tool_error(error);
+        }
+        let content = match lease.read_skill_resource(extension_name, &uri).await {
+            Ok(content) => content,
+            Err(error) => return Self::tool_error(error),
+        };
+        if let Err(error) = super::mcp::verify_resource_contents(&manifest, &uri, &content) {
+            return Self::tool_error(error);
+        }
+        CallToolResult::success(vec![ContentBlock::resource(content)])
     }
 }
 
@@ -79,7 +208,7 @@ impl McpClientTrait for SkillsClient {
             "properties": {
                 "name": {
                     "type": "string",
-                    "description": "Name of the skill to load. Use \"skill-name/path\" to load a supporting file."
+                    "description": "Name of the skill to load. MCP skills use extension::skill. Use skill-name/path for a supporting file, or extension::URI for a server-provided skill URI."
                 },
                 "args": {
                     "type": "string",
@@ -111,7 +240,7 @@ impl McpClientTrait for SkillsClient {
 
     async fn call_tool(
         &self,
-        _ctx: &ToolCallContext,
+        ctx: &ToolCallContext,
         name: &str,
         arguments: Option<JsonObject>,
         _cancellation_token: CancellationToken,
@@ -139,80 +268,99 @@ impl McpClientTrait for SkillsClient {
             .and_then(|args| args.get("args"))
             .and_then(|v| v.as_str());
 
-        let skills = self.discover_skills();
-
-        if let Some(skill) = skills.iter().find(|s| s.name == skill_name) {
-            return match loaded_skill_context_with_args(skill, args) {
-                Ok(rendered) => Ok(CallToolResult::success(vec![ContentBlock::text(rendered)])),
-                Err(e) => Ok(CallToolResult::error(vec![ContentBlock::text(format!(
-                    "Failed to parse skill arguments: {}",
-                    e
-                ))])),
+        let working_dir = ctx
+            .working_dir
+            .clone()
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+        let lease = ctx.extension_lease().map(Arc::as_ref);
+        if let Some((extension_name, uri)) = super::mcp::direct_skill_reference(skill_name) {
+            let Some(lease) = lease else {
+                return Ok(Self::tool_error("Skill server is not connected."));
             };
+            let manifest = match lease.send_skill_get(extension_name, uri).await {
+                Ok(manifest) => manifest,
+                Err(error) => return Ok(Self::tool_error(error)),
+            };
+            let published = super::mcp::qualified_skill_name(extension_name, &manifest.name);
+            let skill = super::mcp::source_entry(&manifest, &published);
+            return Ok(self
+                .load_mcp_skill_with_manifest(&ctx.session_id, &skill, args, lease, manifest)
+                .await);
         }
+        let skills = self
+            .discover_skills(&ctx.session_id, &working_dir, lease)
+            .await;
 
-        if let Some((parent_skill_name, raw_relative_path)) = skill_name.split_once('/') {
-            let relative_path = raw_relative_path.replace('\\', "/");
-            if let Some(skill) = skills.iter().find(|s| {
-                s.name == parent_skill_name
-                    && matches!(s.source_type, SourceType::Skill | SourceType::BuiltinSkill)
-            }) {
+        if let Some((skill, relative_path)) = super::mcp::requested_skill(&skills, skill_name) {
+            if super::mcp::is_mcp_skill(skill) {
+                let Some(lease) = lease else {
+                    return Ok(Self::tool_error("Skill server is not connected."));
+                };
+                return Ok(match relative_path {
+                    Some(path) => {
+                        self.load_mcp_supporting_file(&ctx.session_id, skill, path, lease)
+                            .await
+                    }
+                    None => {
+                        self.load_mcp_skill(&ctx.session_id, skill, args, lease)
+                            .await
+                    }
+                });
+            }
+            if let Some(relative_path) = relative_path {
                 let listed_skill_dir = PathBuf::from(&skill.path);
                 let load_skill_dir = match listed_skill_dir.canonicalize() {
                     Ok(path) => path,
-                    Err(e) => {
-                        return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
-                            "Failed to resolve '{}': {}",
-                            parent_skill_name, e
-                        ))]));
+                    Err(error) => {
+                        return Ok(Self::tool_error(format!(
+                            "Failed to resolve '{}': {error}",
+                            skill.name
+                        )));
                     }
                 };
-
                 for file_path in &skill.supporting_files {
-                    let file_path_buf = Path::new(file_path);
-                    let Ok(rel) = file_path_buf.strip_prefix(&listed_skill_dir) else {
+                    let file_path = Path::new(file_path);
+                    let Ok(relative) = file_path.strip_prefix(&listed_skill_dir) else {
                         continue;
                     };
-                    if rel.to_string_lossy().replace('\\', "/") != relative_path {
+                    if relative.to_string_lossy().replace('\\', "/") != relative_path {
                         continue;
                     }
-
-                    let result = match super::load_supporting_file(&load_skill_dir, rel, skill_name)
-                    {
-                        Ok(content) => CallToolResult::success(vec![ContentBlock::text(content)]),
-                        Err(e) => CallToolResult::error(vec![ContentBlock::text(format!(
-                            "Failed to read '{}': {}",
-                            skill_name, e
-                        ))]),
-                    };
-                    return Ok(result);
+                    return Ok(
+                        match super::load_supporting_file(&load_skill_dir, relative, skill_name) {
+                            Ok(content) => {
+                                CallToolResult::success(vec![ContentBlock::text(content)])
+                            }
+                            Err(error) => {
+                                Self::tool_error(format!("Failed to read '{skill_name}': {error}"))
+                            }
+                        },
+                    );
                 }
-
                 let available: Vec<String> = skill
                     .supporting_files
                     .iter()
-                    .filter_map(|f| {
-                        Path::new(f)
+                    .filter_map(|file| {
+                        Path::new(file)
                             .strip_prefix(&listed_skill_dir)
                             .ok()
-                            .map(|r| r.to_string_lossy().replace('\\', "/"))
+                            .map(|relative| relative.to_string_lossy().replace('\\', "/"))
                     })
                     .take(10)
                     .collect();
-
                 return Ok(if available.is_empty() {
-                    CallToolResult::error(vec![ContentBlock::text(format!(
-                        "Skill '{}' has no supporting files.",
-                        skill.name
-                    ))])
+                    Self::tool_error(format!("Skill '{}' has no supporting files.", skill.name))
                 } else {
-                    CallToolResult::error(vec![ContentBlock::text(format!(
-                        "File '{}' not found. Available: {}",
-                        skill_name,
+                    Self::tool_error(format!(
+                        "File '{skill_name}' not found. Available: {}",
                         available.join(", ")
-                    ))])
+                    ))
                 });
             }
+            return Ok(match loaded_skill_context_with_args(skill, args) {
+                Ok(rendered) => CallToolResult::success(vec![ContentBlock::text(rendered)]),
+                Err(error) => Self::tool_error(format!("Failed to parse skill arguments: {error}")),
+            });
         }
 
         let suggestions: Vec<&str> = skills
@@ -243,12 +391,25 @@ impl McpClientTrait for SkillsClient {
         Some(&self.info)
     }
 
-    fn get_instructions(&self) -> Option<String> {
-        let sources = self.discover_skills();
+    async fn get_instructions(&self, session_id: &str, working_dir: &Path) -> Option<String> {
+        let lease = match self
+            .extension_manager
+            .as_ref()
+            .and_then(std::sync::Weak::upgrade)
+        {
+            Some(manager) => manager.current_lease(session_id).await.ok(),
+            None => None,
+        };
+        let sources = self
+            .discover_skills(session_id, working_dir, lease.as_ref())
+            .await;
         let mut skills: Vec<&SourceEntry> = sources
             .iter()
-            .filter(|s| {
-                s.source_type == SourceType::Skill || s.source_type == SourceType::BuiltinSkill
+            .filter(|skill| {
+                matches!(
+                    skill.source_type,
+                    SourceType::Skill | SourceType::BuiltinSkill | SourceType::McpSkill
+                )
             })
             .collect();
         skills.sort_by(|a, b| (&a.name, &a.path).cmp(&(&b.name, &b.path)));
@@ -261,7 +422,32 @@ impl McpClientTrait for SkillsClient {
             "\n\nYou have these skills at your disposal, when it is clear they can help you solve a problem or you are asked to use them:",
         );
         for skill in &skills {
-            instructions.push_str(&format!("\n• {} - {}", skill.name, skill.description));
+            if skill.source_type == SourceType::McpSkill {
+                let Some(origin) = skill
+                    .properties
+                    .get("mcpExtension")
+                    .and_then(serde_json::Value::as_str)
+                else {
+                    continue;
+                };
+                let name = super::mcp::prompt_text(&skill.name);
+                let origin = super::mcp::prompt_text(origin);
+                let description = super::mcp::prompt_text(&skill.description);
+                let collision = skill
+                    .properties
+                    .get("nameCollision")
+                    .and_then(serde_json::Value::as_bool)
+                    .is_some_and(|collision| collision);
+                instructions.push_str(&format!(
+                    "\n• {} [untrusted MCP skill from {}{}] - {}",
+                    name,
+                    origin,
+                    if collision { ", name collision" } else { "" },
+                    description
+                ));
+            } else {
+                instructions.push_str(&format!("\n• {} - {}", skill.name, skill.description));
+            }
         }
         Some(instructions)
     }
@@ -278,7 +464,6 @@ mod tests {
     use crate::config::Config;
     use std::collections::HashMap;
     use std::fs;
-    use std::sync::Arc;
     use tempfile::TempDir;
 
     fn write_plugin_skill(
@@ -326,21 +511,9 @@ mod tests {
                 )]),
             )
             .unwrap();
-        let session = Arc::new(crate::session::Session {
-            working_dir: project.to_path_buf(),
-            ..crate::session::Session::default()
-        });
-        SkillsClient::new(PlatformExtensionContext {
-            extension_manager: None,
-            provider: Arc::new(tokio::sync::Mutex::new(None)),
-            session_manager: Arc::new(crate::session::SessionManager::instance()),
-            scheduler: None,
-            session: Some(session),
-            use_login_shell_path: false,
-        })
-        .unwrap()
-        .with_builtin_skills(false)
-        .with_config(config)
+        SkillsClient::default()
+            .with_builtin_skills(false)
+            .with_config(config)
     }
 
     fn result_text(result: &CallToolResult) -> &str {
@@ -364,10 +537,12 @@ mod tests {
         let client = test_client(project.path(), "disabled-plugin", false);
 
         assert!(client
-            .get_instructions()
+            .get_instructions("test", project.path())
+            .await
             .is_none_or(|instructions| !instructions.contains("disabled-plugin-skill")));
 
-        let ctx = ToolCallContext::new("test".to_string(), None, None);
+        let ctx =
+            ToolCallContext::new("test".to_string(), Some(project.path().to_path_buf()), None);
         let args = serde_json::from_value(serde_json::json!({
             "name": "disabled-plugin-skill"
         }))
@@ -404,13 +579,17 @@ mod tests {
         write_open_plugin_manifest(project.path(), "enabled-plugin");
         let client = test_client(project.path(), "enabled-plugin", true);
 
-        let instructions = client.get_instructions().unwrap();
+        let instructions = client
+            .get_instructions("test", project.path())
+            .await
+            .unwrap();
         assert!(instructions.contains("enabled-plugin-skill"));
         assert!(instructions.contains("Enabled plugin metadata"));
         assert!(instructions.contains("custom-plugin-skill"));
         assert!(instructions.contains("Custom plugin metadata"));
 
-        let ctx = ToolCallContext::new("test".to_string(), None, None);
+        let ctx =
+            ToolCallContext::new("test".to_string(), Some(project.path().to_path_buf()), None);
         let args = serde_json::from_value(serde_json::json!({
             "name": "custom-plugin-skill"
         }))
@@ -447,7 +626,8 @@ mod tests {
         std::os::unix::fs::symlink(&external_plugin, &plugin_link).unwrap();
         let client = test_client(project.path(), "symlinked-plugin", true);
 
-        let ctx = ToolCallContext::new("test".to_string(), None, None);
+        let ctx =
+            ToolCallContext::new("test".to_string(), Some(project.path().to_path_buf()), None);
         let args = serde_json::from_value(serde_json::json!({
             "name": "symlinked-skill/guide.md"
         }))
@@ -474,27 +654,19 @@ mod tests {
         fs::create_dir(skill_dir.join("nested")).unwrap();
         fs::write(skill_dir.join("nested/guide.md"), "Nested guidance.").unwrap();
 
-        let session = std::sync::Arc::new(crate::session::Session {
-            working_dir: temp_dir.path().to_path_buf(),
-            ..crate::session::Session::default()
-        });
-        let client = SkillsClient::new(PlatformExtensionContext {
-            extension_manager: None,
-            provider: Arc::new(tokio::sync::Mutex::new(None)),
-            session_manager: Arc::new(crate::session::SessionManager::instance()),
-            scheduler: None,
-            session: Some(session),
-            use_login_shell_path: false,
-        })
-        .unwrap()
-        .with_builtin_skills(false);
+        let client = SkillsClient::default().with_builtin_skills(false);
 
         assert!(client
-            .discover_skills()
+            .discover_skills("test", temp_dir.path(), None)
+            .await
             .iter()
             .all(|skill| skill.source_type != SourceType::BuiltinSkill));
 
-        let ctx = ToolCallContext::new("test".to_string(), None, None);
+        let ctx = ToolCallContext::new(
+            "test".to_string(),
+            Some(temp_dir.path().to_path_buf()),
+            None,
+        );
         let args: JsonObject =
             serde_json::from_value(serde_json::json!({"name": "my-skill"})).unwrap();
         let result = client
@@ -528,15 +700,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_load_skill_not_found_returns_error() {
-        let client = SkillsClient::new(PlatformExtensionContext {
-            extension_manager: None,
-            provider: Arc::new(tokio::sync::Mutex::new(None)),
-            session_manager: Arc::new(crate::session::SessionManager::instance()),
-            scheduler: None,
-            session: None,
-            use_login_shell_path: false,
-        })
-        .unwrap();
+        let client = SkillsClient::default();
 
         let ctx = ToolCallContext::new("test".to_string(), None, None);
         let args: JsonObject =

@@ -19,22 +19,16 @@ use crate::session::Session;
 use crate::tool_inspection::{
     get_security_finding_id_from_results, InspectionAction, ToolInspectionManager,
 };
-use tokio::sync::Mutex;
 
 pub const TOOL_EXECUTABLE_KEY: &str = "goose.executable";
 
 pub struct ToolApprovalOperation<'a> {
-    goose_mode: &'a Mutex<GooseMode>,
     tool_inspection_manager: &'a ToolInspectionManager,
 }
 
 impl<'a> ToolApprovalOperation<'a> {
-    pub fn new(
-        goose_mode: &'a Mutex<GooseMode>,
-        tool_inspection_manager: &'a ToolInspectionManager,
-    ) -> Self {
+    pub fn new(tool_inspection_manager: &'a ToolInspectionManager) -> Self {
         Self {
-            goose_mode,
             tool_inspection_manager,
         }
     }
@@ -52,24 +46,29 @@ impl Operation<Session, GooseEffect> for ToolApprovalOperation<'_> {
         conversation: &Conversation,
         _emit: &Emitter,
     ) -> Result<OperationResult<GooseEffect>> {
-        let goose_mode = *self.goose_mode.lock().await;
+        let goose_mode = session.goose_mode;
         if goose_mode == GooseMode::Chat {
             return not_applicable();
         }
 
-        let state = ApprovalState::from_messages(messages_since_kickoff(conversation)?);
+        let turn_messages = messages_since_kickoff(conversation)?;
+        let acting_on_mcp_skill = !crate::skills::mcp::active_origins(&session.id).is_empty();
+        let state = ApprovalState::from_messages(turn_messages);
         let mut effects = Vec::new();
 
         for pending in state.responses() {
             let executable = permission_allows(&pending.permission);
 
             if let Some(tool_name) = pending.tool_name {
-                if pending.permission == Permission::AlwaysAllow && pending.executable != Some(true)
+                if pending.permission == Permission::AlwaysAllow
+                    && pending.executable != Some(true)
+                    && !acting_on_mcp_skill
+                    && tool_name != crate::skills::approval::LOAD_SKILL_TOOL_NAME
                 {
                     self.tool_inspection_manager
                         .update_permission_manager(&tool_name, PermissionLevel::AlwaysAllow)
                         .await;
-                } else if pending.permission == Permission::AlwaysDeny {
+                } else if pending.permission == Permission::AlwaysDeny && !acting_on_mcp_skill {
                     self.tool_inspection_manager
                         .update_permission_manager(&tool_name, PermissionLevel::NeverAllow)
                         .await;
