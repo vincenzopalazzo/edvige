@@ -49,9 +49,11 @@ import {
   registerUpdateIpcHandlers,
   setAutoDownloadDisabled,
   setTrayRef,
+  setCustomUpdateRepository,
   setupAutoUpdater,
   updateTrayMenu,
 } from './utils/autoUpdater';
+import { githubUpdater } from './utils/githubUpdater';
 import { UPDATES_ENABLED } from './updates';
 import './utils/gitBranchIpc';
 import './utils/recipeHash';
@@ -1898,6 +1900,16 @@ ipcMain.handle('directory-chooser', async () => {
   });
 });
 
+
+function applyForkUpdateFeed(settings: Settings): void {
+  const owner = settings.customUpdateOwner ?? process.env.GITHUB_OWNER ?? null;
+  const repo = settings.customUpdateRepo ?? process.env.GITHUB_REPO ?? null;
+  const bundleName = settings.customUpdateBundleName ?? process.env.GOOSE_BUNDLE_NAME ?? null;
+  if (!owner && !repo && !bundleName) return;
+  setCustomUpdateRepository(owner, repo);
+  githubUpdater.setCustomRepository(owner, repo, bundleName);
+}
+
 ipcMain.handle('add-recent-dir', (_event, dir: string) => {
   if (dir) {
     addRecentDir(dir);
@@ -1935,6 +1947,9 @@ const validSettingKeys: Set<string> = new Set([
   'seenAnnouncementIds',
   'disableAutoDownload',
   'recentModels',
+  'customUpdateOwner',
+  'customUpdateRepo',
+  'customUpdateBundleName',
 ]);
 
 ipcMain.handle('set-setting', (_event, key: SettingKey, value: unknown) => {
@@ -1965,6 +1980,10 @@ ipcMain.handle('set-setting', (_event, key: SettingKey, value: unknown) => {
 
   if (key === 'disableAutoDownload') {
     setAutoDownloadDisabled(value as boolean);
+  }
+
+  if (key === 'customUpdateOwner' || key === 'customUpdateRepo' || key === 'customUpdateBundleName') {
+    applyForkUpdateFeed(getSettings());
   }
 });
 
@@ -2498,6 +2517,7 @@ async function appMain() {
         if (settings.disableAutoDownload) {
           setAutoDownloadDisabled(true);
         }
+        applyForkUpdateFeed(settings);
         setupAutoUpdater();
       } catch (error) {
         log.error('Error setting up auto-updater:', error);

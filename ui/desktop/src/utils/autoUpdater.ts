@@ -13,6 +13,31 @@ import * as path from 'path';
 import * as fs from 'fs/promises';
 import log from './logger';
 import { githubUpdater, isInstallerManaged } from './githubUpdater';
+
+let customUpdateOwner: string | null = null;
+let customUpdateRepo: string | null = null;
+
+export function setCustomUpdateRepository(owner?: string | null, repo?: string | null): void {
+  customUpdateOwner = owner?.trim() || null;
+  customUpdateRepo = repo?.trim() || null;
+  githubUpdater.setCustomRepository(customUpdateOwner, customUpdateRepo);
+}
+
+export function applyCustomUpdateFeed(): void {
+  if (!customUpdateOwner || !customUpdateRepo) return;
+  try {
+    autoUpdater.setFeedURL({
+      provider: 'github',
+      owner: customUpdateOwner,
+      repo: customUpdateRepo,
+      releaseType: 'release',
+      ...(isInstallerManaged(app.getPath('exe')) ? { channel: 'installer' } : {}),
+    });
+    log.info(`autoUpdater: custom feed override -> ${customUpdateOwner}/${customUpdateRepo}`);
+  } catch (error) {
+    log.error('Failed to apply custom update feed:', error);
+  }
+}
 import { loadRecentDirs } from './recentDirs';
 import { errorMessage } from './conversionUtils';
 import {
@@ -352,8 +377,8 @@ export function setupAutoUpdater() {
   // Set the feed URL for GitHub releases
   const feedConfig = {
     provider: 'github' as const,
-    owner: 'aaif-goose',
-    repo: 'goose',
+    owner: customUpdateOwner || process.env.GITHUB_OWNER || 'aaif-goose',
+    repo: customUpdateRepo || process.env.GITHUB_REPO || 'goose',
     releaseType: 'release' as const,
     // The installer manifest has its own name (scripts/generate-windows-update-manifest.js) so
     // ZIP copies, which request latest.yml, are never moved onto the installer.

@@ -55,6 +55,9 @@ export interface Settings {
   showPricing: boolean;
   seenAnnouncementIds: string[];
   recentModels: RecentModel[];
+  customUpdateOwner?: string | null;
+  customUpdateRepo?: string | null;
+  customUpdateBundleName?: string | null;
 }
 
 export type SettingKey = keyof Settings;
