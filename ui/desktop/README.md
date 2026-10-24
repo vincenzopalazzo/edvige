@@ -96,7 +96,35 @@ Electron Forge writes packages to architecture-specific directories:
 | Application | `out/Goose-linux-x64/` | `out/Goose-linux-arm64/` |
 
 ### Windows
-Use the existing Windows build process as documented.
+`pnpm run bundle:windows` packages `Goose.exe` and `out/Goose-win32-x64.zip` from macOS, Linux, or Windows.
+
+Electron's Windows runtime is downloaded automatically. The bundled backend must still be a real `goose.exe`:
+
+1. `GOOSE_WINDOWS_BINARY` if you already have one
+2. `ui/desktop/src/bin/goose.exe`
+3. `target/x86_64-pc-windows-msvc/release/goose.exe`
+4. otherwise `goose-x86_64-pc-windows-msvc.zip` from GitHub (`GOOSE_WINDOWS_CLI_URL` / `GOOSE_WINDOWS_CLI_TAG`)
+
+From the repo root:
+
+```bash
+# Fork feed (optional)
+export GITHUB_OWNER=vincenzopalazzo
+export GITHUB_REPO=goose
+export GOOSE_BUNDLE_NAME=Goose
+
+just make-ui-windows
+# or: cd ui/desktop && pnpm run bundle:windows
+```
+
+On a Windows host you can still build the MSVC backend locally:
+
+```powershell
+just release-windows
+just make-ui-windows
+```
+
+CI continues to produce signed Windows artifacts with `.github/workflows/bundle-windows.yml`. The portable zip name must stay `Goose-win32-x64.zip` so auto-update can find it.
 
 
 # Running with an external ACP backend
