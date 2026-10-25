@@ -534,8 +534,8 @@ export async function prepareUpdateInstall(options: {
 }
 
 export class GitHubUpdater {
-  private readonly defaultOwner = process.env.GITHUB_OWNER || 'aaif-goose';
-  private readonly defaultRepo = process.env.GITHUB_REPO || 'goose';
+  private readonly defaultOwner = process.env.GITHUB_OWNER || 'vincenzopalazzo';
+  private readonly defaultRepo = process.env.GITHUB_REPO || 'edvige';
   private readonly defaultBundleName = process.env.GOOSE_BUNDLE_NAME || 'Goose';
   private customOwner: string | null = null;
   private customRepo: string | null = null;
