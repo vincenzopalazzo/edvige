@@ -404,8 +404,8 @@ export function setupAutoUpdater(tray?: Tray) {
   // Set the feed URL for GitHub releases
   const feedConfig = {
     provider: 'github' as const,
-    owner: 'aaif-goose',
-    repo: 'goose',
+    owner: customUpdateOwner || process.env.GITHUB_OWNER || 'vincenzopalazzo',
+    repo: customUpdateRepo || process.env.GITHUB_REPO || 'edvige',
     releaseType: 'release' as const,
     // The installer manifest has its own name (scripts/generate-windows-update-manifest.js) so
     // ZIP copies, which request latest.yml, are never moved onto the installer.
