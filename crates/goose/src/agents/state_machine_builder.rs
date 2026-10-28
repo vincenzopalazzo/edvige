@@ -8,12 +8,12 @@ use tokio_util::sync::CancellationToken;
 use crate::agents::extension_manager::{ExtensionLease, ExtensionManager};
 use crate::agents::state_machine::{
     BangShellOperation, CompactionOperation, DoctorOperation, EmptyResponseOperation,
-    OutputLimitRecoveryOperation,
     ExitOnErrorOperation, GooseEffect, GooseInferenceProvider, GooseInferenceRequestPreparer,
-    InferenceRunner, MaxTurnsOperation, Operation, ProjectOperation, RecipeOperation,
-    RemainingToolCallsOperation, RetryOperation, SkillOperation, SlashCommandOperation,
-    StateMachine, StatusOperation, SteerOperation, SteerQueue, Step, StopHookOperation,
-    SubagentOperation, ToolApprovalOperation, ToolExecutionOperation, ToolPairCompactionOperation,
+    InferenceRunner, MaxTurnsOperation, Operation, OutputLimitRecoveryOperation, ProjectOperation,
+    RecipeOperation, RemainingToolCallsOperation, RetryOperation, SkillOperation,
+    SlashCommandOperation, StateMachine, StatusOperation, SteerOperation, SteerQueue, Step,
+    StopHookOperation, SubagentOperation, ToolApprovalOperation, ToolExecutionOperation,
+    ToolPairCompactionOperation,
 };
 use crate::agents::subagent_handler::ForegroundSubagentRunner;
 use crate::config::Config;

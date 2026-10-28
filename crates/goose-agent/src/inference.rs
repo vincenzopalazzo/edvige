@@ -20,8 +20,8 @@ use tracing_futures::Instrument;
 use crate::machine::MachineSession;
 use crate::operation::{
     applied, messages_since_kickoff, not_applicable, trailing_error, Emitter, Inference,
-    InferenceInput, Operation, OperationResult, OUTPUT_LIMIT_RECOVERY_ATTEMPTED_NOTE,
-    OUTPUT_LIMIT_RECOVERY_OPERATION, CLIENT_LOG,
+    InferenceInput, Operation, OperationResult, CLIENT_LOG, OUTPUT_LIMIT_RECOVERY_ATTEMPTED_NOTE,
+    OUTPUT_LIMIT_RECOVERY_OPERATION,
 };
 use goose_provider_types::maybe_send::{MaybeSend, MaybeSync};
 

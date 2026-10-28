@@ -82,13 +82,11 @@ impl Operation<Session, GooseEffect> for OutputLimitRecoveryOperation {
         emit.message(Message::assistant().with_system_notification(
             SystemNotificationType::InlineMessage,
             "Output token limit reached early. Compacting to continue conversation...",
-        ))
-        .await;
+        ));
         emit.message(Message::assistant().with_system_notification(
             SystemNotificationType::ThinkingMessage,
             RECOVERY_THINKING_TEXT,
-        ))
-        .await;
+        ));
 
         let span = chat_span(
             self.provider.as_ref(),
@@ -120,8 +118,7 @@ impl Operation<Session, GooseEffect> for OutputLimitRecoveryOperation {
                 emit.message(Message::assistant().with_system_notification(
                     SystemNotificationType::InlineMessage,
                     "Compaction complete",
-                ))
-                .await;
+                ));
                 applied([GooseEffect::CompactConversation {
                     conversation: compacted,
                     usage: Some(usage),
@@ -132,8 +129,7 @@ impl Operation<Session, GooseEffect> for OutputLimitRecoveryOperation {
                 emit.message(Message::assistant().with_text(format!(
                     "Ran into this error trying to compact: {e}.\n\n\
                      Please try again or create a new session"
-                )))
-                .await;
+                )));
                 yielded()
             }
         }

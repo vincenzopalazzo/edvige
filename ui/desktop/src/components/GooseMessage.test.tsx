@@ -25,6 +25,8 @@ describe('GooseMessage', () => {
         toolStates={[]}
         toolNotifications={[]}
         toolConfirmationShownInline={false}
+        messages={[message]}
+        messageIndex={0}
         append={vi.fn()}
         isStreaming={false}
       />,
