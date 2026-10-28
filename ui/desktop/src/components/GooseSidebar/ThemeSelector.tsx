@@ -80,9 +80,9 @@ const flavorMessage: Record<CatppuccinThemeId, keyof typeof i18n> = {
 };
 
 interface ThemeSelectorProps {
-  className: string;
-  hideTitle: boolean;
-  horizontal: boolean;
+  className?: string;
+  hideTitle?: boolean;
+  horizontal?: boolean;
 }
 
 function builtinButtonClass(selected: boolean): string {

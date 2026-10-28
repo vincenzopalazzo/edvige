@@ -24,8 +24,6 @@ type ChatInputCapture = {
   onNextChatExtensionDraftChange?: (draft: { selectedNames: Set<string> }) => void;
 };
 
-type Session = Awaited<ReturnType<typeof createSession>>;
-
 const liveVoice: LiveVoiceController = {
   activeSessionId: null,
   liveVoiceSessionId: null,
@@ -73,21 +71,6 @@ vi.mock('../acp/liveVoice', () => ({ acpGetLiveVoiceAvailability: vi.fn() }));
 vi.mock('../acp/acpConnection', () => ({ subscribeToAcpRecovery: vi.fn() }));
 
 const DRAFT = 'a half-written thought';
-const TYPED_WHILE_STARTING = 'and one more thought';
-
-/** Holds session creation open, so the test can edit the draft while it is pending. */
-function pendingSession() {
-  const settle: { started?: () => void; failed?: () => void } = {};
-  vi.mocked(createSession).mockImplementation(
-    () =>
-      new Promise<Session>((resolve, reject) => {
-        settle.started = () => resolve({ id: 'session-1' } as Session);
-        settle.failed = () => reject(new Error('no agent'));
-      })
-  );
-  return settle;
-}
-
 function renderHub(draftRef: { current: string }, setView = vi.fn(), initialWorkingDir?: string) {
   return render(
     <IntlTestWrapper>

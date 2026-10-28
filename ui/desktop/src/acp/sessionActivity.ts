@@ -3,7 +3,7 @@ import type {
   SessionActivityModel as WireSessionActivityModel,
   SessionActivityResponse_unstable,
   SessionActivitySession as WireSessionActivitySession,
-} from '@aaif/goose-sdk';
+} from '@aaif/goose-acp-client';
 import { getAcpClient } from './acpConnection';
 
 export type SessionActivitySession = WireSessionActivitySession;
