@@ -1914,7 +1914,34 @@ impl SessionStorage {
             info!("All migrations complete");
         }
 
+        // A pre-rebase fork build used migration 17/18 for `status` before
+        // upstream 8c0c409a8 used 17 for the prompt and container columns.
+        // Do not rewind below 17: migrations 2-16 are not idempotent. Run the
+        // upstream migration 17 body once, in place, and keep the stamp.
+        Self::replay_upstream_migration_17(&mut tx).await?;
+
         tx.commit().await?;
+        Ok(())
+    }
+
+    async fn replay_upstream_migration_17(tx: &mut sqlx::Transaction<'_, Sqlite>) -> Result<()> {
+        let has_prompt_columns = sqlx::query_scalar::<_, i32>(
+            "SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'system_prompt_override'",
+        )
+        .fetch_one(&mut **tx)
+        .await?
+            > 0;
+        if has_prompt_columns {
+            return Ok(());
+        }
+
+        let stamped = Self::get_schema_version(tx).await?;
+        if stamped < 17 {
+            return Ok(());
+        }
+
+        info!("Replaying upstream migration 17 over fork schema stamp v{stamped}");
+        Self::apply_migration(tx, 17).await?;
         Ok(())
     }
 
@@ -6013,6 +6040,69 @@ mod tests {
 
         let reloaded = sm.get_session(&session.id, false).await.unwrap();
         assert_eq!(reloaded.goose_mode, GooseMode::default());
+    }
+
+    #[tokio::test]
+    async fn test_fork_schema_stamp_replays_upstream_migration_17() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join(SESSIONS_FOLDER).join(DB_NAME);
+        if let Some(parent) = db_path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+
+        let pool = SqlitePoolOptions::new()
+            .connect_with(
+                SqliteConnectOptions::new()
+                    .filename(&db_path)
+                    .create_if_missing(true),
+            )
+            .await
+            .unwrap();
+        SessionStorage::create_schema(&pool).await.unwrap();
+
+        // Pre-rebase fork builds stamped 17/18 for `status`, before upstream
+        // 8c0c409a8 used migration 17 for these columns.
+        for column in [
+            "system_prompt_override",
+            "system_prompt_extras_json",
+            "container_id",
+        ] {
+            sqlx::query(AssertSqlSafe(format!(
+                "ALTER TABLE sessions DROP COLUMN {column}"
+            )))
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+        pool.close().await;
+
+        let sm = SessionManager::new(temp_dir.path().to_path_buf());
+        let opened = sm.storage().pool().await.unwrap();
+        for column in [
+            "system_prompt_override",
+            "system_prompt_extras_json",
+            "container_id",
+        ] {
+            let present = sqlx::query_scalar::<_, i32>(
+                "SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = ?",
+            )
+            .bind(column)
+            .fetch_one(opened)
+            .await
+            .unwrap();
+            assert_eq!(
+                present, 1,
+                "sessions.{column} should come from migration 17"
+            );
+        }
+        let version = sqlx::query_scalar::<_, i32>("SELECT MAX(version) FROM schema_version")
+            .fetch_one(opened)
+            .await
+            .unwrap();
+        assert_eq!(version, CURRENT_SCHEMA_VERSION);
+
+        let listed = sm.list_sessions().await.unwrap();
+        assert!(listed.is_empty());
     }
 
     #[tokio::test]
