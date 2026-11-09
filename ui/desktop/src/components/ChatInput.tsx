@@ -515,7 +515,7 @@ export default function ChatInput({
     startRecording,
     stopRecording,
   } = useAudioRecorder({
-    onTranscription: (text) => {
+    onTranscription: (text, source) => {
       trackVoiceDictation('transcribed');
 
       let filteredText = text.replace(/\([^)]*\)/g, '').trim();
@@ -524,9 +524,10 @@ export default function ChatInput({
         return;
       }
 
-      const shouldAutoSubmit = /\bsubmit[.,!?;'"\s]*$/i.test(filteredText);
+      const saidSubmit = /\bsubmit[.,!?;'"\s]*$/i.test(filteredText);
+      const shouldAutoSubmit = source === 'pause' || saidSubmit;
 
-      const cleanedText = shouldAutoSubmit
+      const cleanedText = saidSubmit
         ? filteredText.replace(/\bsubmit[.,!?;'"\s]*$/i, '').trim()
         : filteredText;
 
@@ -555,6 +556,35 @@ export default function ChatInput({
       });
     },
   });
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || !event.shiftKey || event.code !== 'Space') {
+        return;
+      }
+      if (event.repeat || !dictationProvider || !isEnabled || isTranscribing) {
+        return;
+      }
+      event.preventDefault();
+      if (isRecording) {
+        trackVoiceDictation('stop');
+        stopRecording();
+      } else {
+        trackVoiceDictation('start');
+        void startRecording();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [
+    dictationProvider,
+    isEnabled,
+    isRecording,
+    isTranscribing,
+    startRecording,
+    stopRecording,
+  ]);
+
   const internalTextAreaRef = useRef<HTMLTextAreaElement>(null);
   const textAreaRef = inputRef || internalTextAreaRef;
   const timeoutRefsRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
@@ -1890,7 +1920,12 @@ export default function ChatInput({
               {!isEnabled ? (
                 <p>Dictation not configured (Settings)</p>
               ) : (
-                <p>Voice dictation{isRecording ? '' : ' • Say "submit" to send'}</p>
+                <p>
+                  Voice dictation
+                  {isRecording
+                    ? ' • pause sends, mic or ⌘⇧Space stops'
+                    : ' • ⌘⇧Space, pause sends'}
+                </p>
               )}
             </TooltipContent>
           </Tooltip>

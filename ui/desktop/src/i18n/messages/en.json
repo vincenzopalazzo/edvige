@@ -1868,6 +1868,18 @@
   "liveVoiceSettings.description": {
     "defaultMessage": "Have a real-time voice conversation with Goose"
   },
+  "liveVoiceSettings.grok": {
+    "defaultMessage": "Grok"
+  },
+  "liveVoiceSettings.grokHint": {
+    "defaultMessage": "Grok uses the xAI API key and requires Autonomous mode."
+  },
+  "liveVoiceSettings.openai": {
+    "defaultMessage": "OpenAI"
+  },
+  "liveVoiceSettings.provider": {
+    "defaultMessage": "Voice provider"
+  },
   "liveVoiceSettings.title": {
     "defaultMessage": "Live voice"
   },
@@ -4030,12 +4042,6 @@
   },
   "sessions.searchPlaceholder": {
     "defaultMessage": "Search history..."
-  },
-  "sessions.shareNostr.description": {
-    "defaultMessage": "Anyone with this link can fetch and decrypt the session. Treat it like a secret."
-  },
-  "sessions.shareNostr.title": {
-    "defaultMessage": "Encrypted Nostr Share Link"
   },
   "sessions.toast.archiveFailed": {
     "defaultMessage": "Failed to archive session \"{name}\": {error}"

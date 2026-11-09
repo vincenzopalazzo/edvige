@@ -1796,6 +1796,18 @@
   "liveVoiceSettings.description": {
     "defaultMessage": "Goose के साथ रीयल-टाइम वॉइस बातचीत करें"
   },
+  "liveVoiceSettings.grok": {
+    "defaultMessage": "Grok"
+  },
+  "liveVoiceSettings.grokHint": {
+    "defaultMessage": "Grok xAI API कुंजी का उपयोग करता है और इसके लिए स्वायत्त मोड आवश्यक है।"
+  },
+  "liveVoiceSettings.openai": {
+    "defaultMessage": "OpenAI"
+  },
+  "liveVoiceSettings.provider": {
+    "defaultMessage": "वॉइस प्रदाता"
+  },
   "liveVoiceSettings.title": {
     "defaultMessage": "लाइव वॉइस"
   },
@@ -3931,12 +3943,6 @@
   },
   "sessions.searchPlaceholder": {
     "defaultMessage": "खोज इतिहास..."
-  },
-  "sessions.shareNostr.description": {
-    "defaultMessage": "इस लिंक वाला कोई भी व्यक्ति सत्र को ला सकता है और डिक्रिप्ट कर सकता है। इसे एक रहस्य की तरह समझो."
-  },
-  "sessions.shareNostr.title": {
-    "defaultMessage": "एन्क्रिप्टेड नोस्ट्र शेयर लिंक"
   },
   "sessions.toast.archiveFailed": {
     "defaultMessage": "सत्र \"{name}\" संग्रहीत करने में विफल: {error}"

@@ -1796,6 +1796,18 @@
   "liveVoiceSettings.description": {
     "defaultMessage": "Adakan perbualan suara masa nyata dengan Goose"
   },
+  "liveVoiceSettings.grok": {
+    "defaultMessage": "Grok"
+  },
+  "liveVoiceSettings.grokHint": {
+    "defaultMessage": "Grok menggunakan kunci API xAI dan memerlukan mod autonomi."
+  },
+  "liveVoiceSettings.openai": {
+    "defaultMessage": "OpenAI"
+  },
+  "liveVoiceSettings.provider": {
+    "defaultMessage": "Pembekal suara"
+  },
   "liveVoiceSettings.title": {
     "defaultMessage": "Suara langsung"
   },
@@ -3931,12 +3943,6 @@
   },
   "sessions.searchPlaceholder": {
     "defaultMessage": "Cari sejarah..."
-  },
-  "sessions.shareNostr.description": {
-    "defaultMessage": "Sesiapa sahaja yang mempunyai pautan ini boleh mengambil dan menyahsulit sesi tersebut. Anggap ia sebagai rahsia."
-  },
-  "sessions.shareNostr.title": {
-    "defaultMessage": "Pautan Kongsi Nostr Tersulit"
   },
   "sessions.toast.archiveFailed": {
     "defaultMessage": "Gagal mengarkibkan sesi \"{name}\": {error}"

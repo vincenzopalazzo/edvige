@@ -94,9 +94,13 @@ export async function pruneCache(keep = 2): Promise<void> {
       try {
         await fs.unlink(entry.full);
         log.info(`pruneCache: removed old cached update ${entry.name}`);
-      } catch {}
+      } catch {
+        // A locked cache file can stay until the next prune.
+      }
     }
-  } catch {}
+  } catch {
+    // Cache pruning is best-effort.
+  }
 }
 
 export async function isTargetWritable(targetPath: string): Promise<boolean> {

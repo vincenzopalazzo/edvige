@@ -1796,6 +1796,18 @@
   "liveVoiceSettings.description": {
     "defaultMessage": "Mantén una conversación de voz en tiempo real con Goose"
   },
+  "liveVoiceSettings.grok": {
+    "defaultMessage": "Grok"
+  },
+  "liveVoiceSettings.grokHint": {
+    "defaultMessage": "Grok usa la clave de API de xAI y requiere el modo autónomo."
+  },
+  "liveVoiceSettings.openai": {
+    "defaultMessage": "OpenAI"
+  },
+  "liveVoiceSettings.provider": {
+    "defaultMessage": "Proveedor de voz"
+  },
   "liveVoiceSettings.title": {
     "defaultMessage": "Voz en directo"
   },
@@ -3931,12 +3943,6 @@
   },
   "sessions.searchPlaceholder": {
     "defaultMessage": "Buscar en el historial..."
-  },
-  "sessions.shareNostr.description": {
-    "defaultMessage": "Cualquiera que tenga este enlace puede obtener y descifrar la sesión. Trátalo como un secreto."
-  },
-  "sessions.shareNostr.title": {
-    "defaultMessage": "Enlace cifrado de Nostr para compartir"
   },
   "sessions.toast.archiveFailed": {
     "defaultMessage": "No se pudo archivar la sesión \"{name}\": {error}"

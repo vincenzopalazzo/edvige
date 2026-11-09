@@ -1796,6 +1796,18 @@
   "liveVoiceSettings.description": {
     "defaultMessage": "Goose ile gerçek zamanlı sesli sohbet edin"
   },
+  "liveVoiceSettings.grok": {
+    "defaultMessage": "Grok"
+  },
+  "liveVoiceSettings.grokHint": {
+    "defaultMessage": "Grok, xAI API anahtarını kullanır ve özerk mod gerektirir."
+  },
+  "liveVoiceSettings.openai": {
+    "defaultMessage": "OpenAI"
+  },
+  "liveVoiceSettings.provider": {
+    "defaultMessage": "Ses sağlayıcı"
+  },
   "liveVoiceSettings.title": {
     "defaultMessage": "Canlı ses"
   },
@@ -3931,12 +3943,6 @@
   },
   "sessions.searchPlaceholder": {
     "defaultMessage": "Arama geçmişi..."
-  },
-  "sessions.shareNostr.description": {
-    "defaultMessage": "Bu bağlantıya sahip olan herkes oturumu alıp şifresini çözebilir. Buna bir sırmış gibi davran."
-  },
-  "sessions.shareNostr.title": {
-    "defaultMessage": "Şifreli Nostr Paylaşım Bağlantısı"
   },
   "sessions.toast.archiveFailed": {
     "defaultMessage": "\"{name}\" oturumu arşivlenemedi: {error}"

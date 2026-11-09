@@ -709,6 +709,11 @@ export type LiveVoiceStartRequest_unstable = {
 export type LiveVoiceStartResponse_unstable = {
     interactionId: string;
     answerSdp: string;
+    /**
+     * Present when live voice is speaking through xAI Grok. The desktop opens the WebSocket itself.
+     */
+    clientSecret?: string | null;
+    websocketUrl?: string | null;
 };
 
 export type LiveVoiceStopRequest_unstable = {

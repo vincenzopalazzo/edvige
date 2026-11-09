@@ -2005,13 +2005,24 @@ ipcMain.handle('set-setting', (_event, key: SettingKey, value: unknown) => {
   }
 
   if (key === 'customUpdateOwner' || key === 'customUpdateRepo' || key === 'customUpdateBundleName') {
-    try {
-      const s = getSettings() as unknown as { customUpdateOwner?: string | null; customUpdateRepo?: string | null; customUpdateBundleName?: string | null };
-      const { setCustomUpdateRepository } = require('./utils/autoUpdater');
-      const { githubUpdater } = require('./utils/githubUpdater');
-      setCustomUpdateRepository(s.customUpdateOwner ?? null, s.customUpdateRepo ?? null);
-      githubUpdater.setCustomRepository(s.customUpdateOwner ?? null, s.customUpdateRepo ?? null, s.customUpdateBundleName ?? null);
-    } catch {}
+    void import('./utils/autoUpdater')
+      .then(async ({ setCustomUpdateRepository }) => {
+        const { githubUpdater } = await import('./utils/githubUpdater');
+        const s = getSettings() as unknown as {
+          customUpdateOwner?: string | null;
+          customUpdateRepo?: string | null;
+          customUpdateBundleName?: string | null;
+        };
+        setCustomUpdateRepository(s.customUpdateOwner ?? null, s.customUpdateRepo ?? null);
+        githubUpdater.setCustomRepository(
+          s.customUpdateOwner ?? null,
+          s.customUpdateRepo ?? null,
+          s.customUpdateBundleName ?? null
+        );
+      })
+      .catch(() => {
+        // Updater modules can be unavailable while settings load.
+      });
   }
 });
 
@@ -2512,7 +2523,9 @@ async function appMain() {
       setCustomUpdateRepository(s.customUpdateOwner ?? null, s.customUpdateRepo ?? null);
       githubUpdater.setCustomRepository(s.customUpdateOwner ?? null, s.customUpdateRepo ?? null, s.customUpdateBundleName ?? null);
     }
-  } catch {}
+  } catch {
+    // A missing updater must not block startup.
+  }
 
   // Migrate old settings format if needed (one-time migration)
   const settings = getSettings();

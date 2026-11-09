@@ -1377,6 +1377,19 @@
         },
         "answerSdp": {
           "type": "string"
+        },
+        "clientSecret": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Present when live voice is speaking through xAI Grok. The desktop opens the WebSocket itself."
+        },
+        "websocketUrl": {
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [

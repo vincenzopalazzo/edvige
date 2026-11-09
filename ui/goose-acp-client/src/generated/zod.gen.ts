@@ -449,7 +449,9 @@ export const zLiveVoiceStartRequest_unstable = z.object({
 
 export const zLiveVoiceStartResponse_unstable = z.object({
     interactionId: z.string(),
-    answerSdp: z.string()
+    answerSdp: z.string(),
+    clientSecret: z.string().nullish(),
+    websocketUrl: z.string().nullish()
 });
 
 export const zLiveVoiceStopRequest_unstable = z.object({

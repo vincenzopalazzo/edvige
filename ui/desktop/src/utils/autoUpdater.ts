@@ -783,7 +783,9 @@ async function githubAutoDownload(
             log.error('Failed to install on notification click:', e);
           }
         });
-      } catch {}
+      } catch {
+        // Some hosts cannot construct a Notification.
+      }
     } else {
       trackUpdateDownloadCompleted(false, latestVersion, 'github-fallback', downloadResult.error);
       log.error(

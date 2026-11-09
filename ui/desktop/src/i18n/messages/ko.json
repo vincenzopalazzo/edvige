@@ -1796,6 +1796,18 @@
   "liveVoiceSettings.description": {
     "defaultMessage": "Goose와 실시간으로 음성 대화"
   },
+  "liveVoiceSettings.grok": {
+    "defaultMessage": "Grok"
+  },
+  "liveVoiceSettings.grokHint": {
+    "defaultMessage": "Grok는 xAI API 키를 사용하며 자율 모드가 필요합니다."
+  },
+  "liveVoiceSettings.openai": {
+    "defaultMessage": "OpenAI"
+  },
+  "liveVoiceSettings.provider": {
+    "defaultMessage": "음성 제공자"
+  },
   "liveVoiceSettings.title": {
     "defaultMessage": "실시간 음성"
   },
@@ -3931,12 +3943,6 @@
   },
   "sessions.searchPlaceholder": {
     "defaultMessage": "기록 검색..."
-  },
-  "sessions.shareNostr.description": {
-    "defaultMessage": "이 링크가 있는 사람은 누구나 세션을 가져오고 복호화할 수 있습니다. 비밀처럼 다루세요."
-  },
-  "sessions.shareNostr.title": {
-    "defaultMessage": "암호화된 Nostr 공유 링크"
   },
   "sessions.toast.archiveFailed": {
     "defaultMessage": "세션 \"{name}\" 보관 실패: {error}"

@@ -37,6 +37,9 @@ impl GooseAcpAgent {
                 .get_goose_mode()
                 .unwrap_or_default(),
         };
+        if xai_live_voice_selected() {
+            return Ok(xai_live_voice_availability(mode));
+        }
         Ok(
             match self
                 .live_voice
@@ -59,6 +62,9 @@ impl GooseAcpAgent {
         cx: &ConnectionTo<Client>,
         req: LiveVoiceStartRequest,
     ) -> Result<LiveVoiceStartResponse, agent_client_protocol::Error> {
+        if xai_live_voice_selected() {
+            return start_xai_live_voice().await;
+        }
         let offer = WebRtcOffer::new(req.offer_sdp)
             .ok_or_else(agent_client_protocol::Error::invalid_params)?;
         let session_id = req.session_id.clone();
@@ -94,6 +100,7 @@ impl GooseAcpAgent {
         Ok(LiveVoiceStartResponse {
             interaction_id: interaction.interaction_id.0,
             answer_sdp: interaction.answer.into_sdp(),
+            ..Default::default()
         })
     }
 
@@ -189,6 +196,9 @@ impl GooseAcpAgent {
         req: LiveVoiceStopRequest,
     ) -> Result<EmptyResponse, agent_client_protocol::Error> {
         self.load_live_voice_session(&req.session_id).await?;
+        if req.interaction_id.starts_with("xai-") {
+            return Ok(EmptyResponse {});
+        }
         let interaction_id = LiveVoiceInteractionId(req.interaction_id);
         self.live_voice
             .stop_interaction(&req.session_id, &interaction_id)
@@ -385,6 +395,115 @@ impl GooseAcpAgent {
     }
 }
 
+const XAI_LIVE_VOICE_PROVIDER_KEY: &str = "GOOSE_LIVE_VOICE_PROVIDER";
+const XAI_REALTIME_CLIENT_SECRETS_URL: &str = "https://api.x.ai/v1/realtime/client_secrets";
+const XAI_REALTIME_WEBSOCKET_URL: &str = "wss://api.x.ai/v1/realtime?model=grok-voice-latest";
+
+fn xai_live_voice_selected() -> bool {
+    crate::config::Config::global()
+        .get_param::<String>(XAI_LIVE_VOICE_PROVIDER_KEY)
+        .ok()
+        .is_some_and(|value| {
+            let value = value.trim();
+            value.eq_ignore_ascii_case("xai") || value.eq_ignore_ascii_case("grok")
+        })
+}
+
+fn xai_live_voice_availability(mode: crate::config::GooseMode) -> LiveVoiceAvailabilityResponse {
+    if mode != crate::config::GooseMode::Auto {
+        return LiveVoiceAvailabilityResponse {
+            status: LiveVoiceStatus::Unavailable,
+            message: "Live voice requires Autonomous mode".into(),
+        };
+    }
+    if !crate::config::Config::global()
+        .get_param::<serde_json::Value>("GOOSE_LIVE_VOICE_ENABLED")
+        .is_ok_and(config_flag_enabled)
+    {
+        return LiveVoiceAvailabilityResponse {
+            status: LiveVoiceStatus::Unavailable,
+            message: "Live voice is disabled".into(),
+        };
+    }
+    if crate::config::Config::global()
+        .get_secret::<String>("XAI_API_KEY")
+        .is_err()
+    {
+        return LiveVoiceAvailabilityResponse {
+            status: LiveVoiceStatus::Unavailable,
+            message: "Set XAI_API_KEY to use Grok live voice".into(),
+        };
+    }
+    LiveVoiceAvailabilityResponse {
+        status: LiveVoiceStatus::Ready,
+        message: "Start Grok live voice".into(),
+    }
+}
+
+fn config_flag_enabled(value: serde_json::Value) -> bool {
+    match value {
+        serde_json::Value::Bool(enabled) => enabled,
+        serde_json::Value::Number(enabled) => enabled.as_u64() == Some(1),
+        serde_json::Value::String(enabled) => {
+            enabled == "1" || enabled.eq_ignore_ascii_case("true")
+        }
+        _ => false,
+    }
+}
+
+async fn start_xai_live_voice() -> Result<LiveVoiceStartResponse, agent_client_protocol::Error> {
+    let api_key = crate::config::Config::global()
+        .get_secret::<String>("XAI_API_KEY")
+        .map_err(|_| {
+            agent_client_protocol::Error::invalid_params().data("XAI_API_KEY is not configured")
+        })?;
+    let client_secret = mint_xai_client_secret(&api_key)
+        .await
+        .map_err(|error| agent_client_protocol::Error::internal_error().data(error))?;
+    Ok(LiveVoiceStartResponse {
+        interaction_id: format!("xai-{}", Uuid::new_v4()),
+        answer_sdp: String::new(),
+        client_secret: Some(client_secret),
+        websocket_url: Some(XAI_REALTIME_WEBSOCKET_URL.to_string()),
+    })
+}
+
+async fn mint_xai_client_secret(api_key: &str) -> Result<String, String> {
+    let response = reqwest::Client::new()
+        .post(XAI_REALTIME_CLIENT_SECRETS_URL)
+        .bearer_auth(api_key)
+        .json(&serde_json::json!({ "expires_after": { "seconds": 300 } }))
+        .send()
+        .await
+        .map_err(|error| format!("xAI client secret request failed: {error}"))?;
+    let status = response.status();
+    let body: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|error| format!("xAI client secret response was not JSON: {error}"))?;
+    if !status.is_success() {
+        let preview: String = body.to_string().chars().take(180).collect();
+        return Err(format!(
+            "xAI client secret request returned {status}: {preview}"
+        ));
+    }
+    xai_client_secret_from_body(&body)
+        .ok_or_else(|| "xAI client secret response had no token".into())
+}
+
+fn xai_client_secret_from_body(body: &serde_json::Value) -> Option<String> {
+    body.get("value")
+        .and_then(|value| value.as_str())
+        .or_else(|| body.get("client_secret").and_then(|value| value.as_str()))
+        .or_else(|| {
+            body.pointer("/client_secret/value")
+                .and_then(|value| value.as_str())
+        })
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
 fn map_live_voice_error(error: LiveVoiceError) -> agent_client_protocol::Error {
     match error {
         LiveVoiceError::Unavailable => {
@@ -396,5 +515,38 @@ fn map_live_voice_error(error: LiveVoiceError) -> agent_client_protocol::Error {
         LiveVoiceError::StopFailed => {
             agent_client_protocol::Error::internal_error().data("Live voice could not stop cleanly")
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::xai_client_secret_from_body;
+
+    #[test]
+    fn reads_the_ephemeral_token_value() {
+        let body = serde_json::json!({
+            "value": "xai-realtime-client-secret-abc",
+            "expires_at": 1750000000
+        });
+        assert_eq!(
+            xai_client_secret_from_body(&body).as_deref(),
+            Some("xai-realtime-client-secret-abc")
+        );
+    }
+
+    #[test]
+    fn reads_a_nested_client_secret() {
+        let body = serde_json::json!({
+            "client_secret": { "value": " nested-token " }
+        });
+        assert_eq!(
+            xai_client_secret_from_body(&body).as_deref(),
+            Some("nested-token")
+        );
+    }
+
+    #[test]
+    fn rejects_an_empty_token() {
+        assert!(xai_client_secret_from_body(&serde_json::json!({ "value": "  " })).is_none());
     }
 }

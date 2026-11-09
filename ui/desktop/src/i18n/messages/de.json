@@ -1796,6 +1796,18 @@
   "liveVoiceSettings.description": {
     "defaultMessage": "Führe ein Echtzeit-Sprachgespräch mit Goose"
   },
+  "liveVoiceSettings.grok": {
+    "defaultMessage": "Grok"
+  },
+  "liveVoiceSettings.grokHint": {
+    "defaultMessage": "Grok nutzt den xAI-API-Schlüssel und erfordert den autonomen Modus."
+  },
+  "liveVoiceSettings.openai": {
+    "defaultMessage": "OpenAI"
+  },
+  "liveVoiceSettings.provider": {
+    "defaultMessage": "Sprachanbieter"
+  },
   "liveVoiceSettings.title": {
     "defaultMessage": "Live-Sprachmodus"
   },
@@ -3931,12 +3943,6 @@
   },
   "sessions.searchPlaceholder": {
     "defaultMessage": "Verlauf durchsuchen..."
-  },
-  "sessions.shareNostr.description": {
-    "defaultMessage": "Jeder mit diesem Link kann die Sitzung abrufen und entschlüsseln. Behandeln Sie ihn wie ein Geheimnis."
-  },
-  "sessions.shareNostr.title": {
-    "defaultMessage": "Verschlüsselter Nostr-Freigabelink"
   },
   "sessions.toast.archiveFailed": {
     "defaultMessage": "Sitzung \"{name}\" konnte nicht archiviert werden: {error}"
