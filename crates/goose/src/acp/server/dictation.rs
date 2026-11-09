@@ -11,9 +11,11 @@ use crate::dictation::whisper;
 const OPENAI_TRANSCRIPTION_MODEL_CONFIG_KEY: &str = "OPENAI_TRANSCRIPTION_MODEL";
 const GROQ_TRANSCRIPTION_MODEL_CONFIG_KEY: &str = "GROQ_TRANSCRIPTION_MODEL";
 const ELEVENLABS_TRANSCRIPTION_MODEL_CONFIG_KEY: &str = "ELEVENLABS_TRANSCRIPTION_MODEL";
+const XAI_TRANSCRIPTION_MODEL_CONFIG_KEY: &str = "XAI_TRANSCRIPTION_MODEL";
 const OPENAI_TRANSCRIPTION_MODEL: &str = "whisper-1";
 const GROQ_TRANSCRIPTION_MODEL: &str = "whisper-large-v3-turbo";
 const ELEVENLABS_TRANSCRIPTION_MODEL: &str = "scribe_v1";
+const XAI_TRANSCRIPTION_MODEL: &str = "grok-voice-transcribe-2.0";
 
 impl GooseAcpAgent {
     pub(super) async fn on_dictation_transcribe(
@@ -306,6 +308,7 @@ fn dictation_model_config_key(provider: DictationProvider) -> Option<String> {
     match provider {
         DictationProvider::OpenAI => Some(OPENAI_TRANSCRIPTION_MODEL_CONFIG_KEY.to_string()),
         DictationProvider::Groq => Some(GROQ_TRANSCRIPTION_MODEL_CONFIG_KEY.to_string()),
+        DictationProvider::Xai => Some(XAI_TRANSCRIPTION_MODEL_CONFIG_KEY.to_string()),
         DictationProvider::ElevenLabs => {
             Some(ELEVENLABS_TRANSCRIPTION_MODEL_CONFIG_KEY.to_string())
         }
@@ -321,6 +324,7 @@ fn dictation_transcribe_params(provider: DictationProvider) -> (&'static str, &'
     match provider {
         DictationProvider::OpenAI => ("model", OPENAI_TRANSCRIPTION_MODEL),
         DictationProvider::Groq => ("model", GROQ_TRANSCRIPTION_MODEL),
+        DictationProvider::Xai => ("model", XAI_TRANSCRIPTION_MODEL),
         DictationProvider::ElevenLabs => ("model_id", ELEVENLABS_TRANSCRIPTION_MODEL),
         DictationProvider::ModelNative => ("", ""),
         #[cfg(feature = "local-inference")]
@@ -332,6 +336,7 @@ fn dictation_default_model(provider: DictationProvider) -> Option<String> {
     match provider {
         DictationProvider::OpenAI => Some(OPENAI_TRANSCRIPTION_MODEL.to_string()),
         DictationProvider::Groq => Some(GROQ_TRANSCRIPTION_MODEL.to_string()),
+        DictationProvider::Xai => Some(XAI_TRANSCRIPTION_MODEL.to_string()),
         DictationProvider::ElevenLabs => Some(ELEVENLABS_TRANSCRIPTION_MODEL.to_string()),
         DictationProvider::ModelNative => crate::config::Config::global()
             .get_param::<String>("GOOSE_MODEL")
@@ -374,6 +379,11 @@ fn dictation_available_models(provider: DictationProvider) -> Vec<DictationModel
             id: OPENAI_TRANSCRIPTION_MODEL.to_string(),
             label: "Whisper-1".to_string(),
             description: "OpenAI's hosted Whisper transcription model.".to_string(),
+        }],
+        DictationProvider::Xai => vec![DictationModelOption {
+            id: XAI_TRANSCRIPTION_MODEL.to_string(),
+            label: "Grok Voice Transcribe".to_string(),
+            description: "xAI Grok speech-to-text.".to_string(),
         }],
         DictationProvider::Groq => vec![DictationModelOption {
             id: GROQ_TRANSCRIPTION_MODEL.to_string(),

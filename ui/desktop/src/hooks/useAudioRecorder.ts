@@ -5,12 +5,12 @@ import type { DictationProvider } from '../types/dictation';
 import { errorMessage } from '../utils/conversionUtils';
 
 interface UseAudioRecorderOptions {
-  onTranscription: (text: string) => void;
+  onTranscription: (text: string, source: 'pause' | 'stop') => void;
   onError: (message: string) => void;
 }
 
 const SAMPLE_RATE = 16000;
-const SILENCE_MS = 800;
+const SILENCE_MS = 1200;
 const MIN_SPEECH_MS = 200;
 // RMS threshold for speech detection. Audio samples are Float32 in [-1, 1] range.
 // 0.015 (~1.5% of full-scale) distinguishes normal speech from background noise
@@ -180,7 +180,10 @@ export const useAudioRecorder = ({ onTranscription, onError }: UseAudioRecorderO
 
         const text = await transcribeDictation(base64, 'audio/wav', prov);
         if (text && isActiveGeneration(generation)) {
-          onTranscriptionRef.current(text);
+          onTranscriptionRef.current(
+            text,
+            generation.completesAfterTranscription ? 'stop' : 'pause'
+          );
         }
       } catch (error) {
         if (isActiveGeneration(generation)) {

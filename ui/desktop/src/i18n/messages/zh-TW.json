@@ -1796,6 +1796,18 @@
   "liveVoiceSettings.description": {
     "defaultMessage": "與 Goose 進行即時語音對話"
   },
+  "liveVoiceSettings.grok": {
+    "defaultMessage": "Grok"
+  },
+  "liveVoiceSettings.grokHint": {
+    "defaultMessage": "Grok 使用 xAI API 金鑰，並且需要自主模式。"
+  },
+  "liveVoiceSettings.openai": {
+    "defaultMessage": "OpenAI"
+  },
+  "liveVoiceSettings.provider": {
+    "defaultMessage": "語音提供者"
+  },
   "liveVoiceSettings.title": {
     "defaultMessage": "即時語音"
   },
@@ -3931,12 +3943,6 @@
   },
   "sessions.searchPlaceholder": {
     "defaultMessage": "搜尋記錄..."
-  },
-  "sessions.shareNostr.description": {
-    "defaultMessage": "任何持有此連結的人都能擷取並解密該工作階段。請將其視為機密。"
-  },
-  "sessions.shareNostr.title": {
-    "defaultMessage": "加密的 Nostr 分享連結"
   },
   "sessions.toast.archiveFailed": {
     "defaultMessage": "無法封存工作階段「{name}」：{error}"

@@ -1796,6 +1796,18 @@
   "liveVoiceSettings.description": {
     "defaultMessage": "Общайтесь с Goose голосом в реальном времени"
   },
+  "liveVoiceSettings.grok": {
+    "defaultMessage": "Grok"
+  },
+  "liveVoiceSettings.grokHint": {
+    "defaultMessage": "Grok использует ключ API xAI и требует автономный режим."
+  },
+  "liveVoiceSettings.openai": {
+    "defaultMessage": "OpenAI"
+  },
+  "liveVoiceSettings.provider": {
+    "defaultMessage": "Голосовой провайдер"
+  },
   "liveVoiceSettings.title": {
     "defaultMessage": "Голосовой режим"
   },
@@ -3931,12 +3943,6 @@
   },
   "sessions.searchPlaceholder": {
     "defaultMessage": "Поиск по истории..."
-  },
-  "sessions.shareNostr.description": {
-    "defaultMessage": "Любой, у кого есть эта ссылка, сможет получить и расшифровать ваш сеанс. Обращайтесь с ней как с секретом."
-  },
-  "sessions.shareNostr.title": {
-    "defaultMessage": "Зашифрованная ссылка общего доступа Nostr"
   },
   "sessions.toast.archiveFailed": {
     "defaultMessage": "Не удалось архивировать сеанс «{name}»: {error}"

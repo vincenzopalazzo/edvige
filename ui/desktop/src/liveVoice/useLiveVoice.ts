@@ -6,6 +6,8 @@ import {
   type LiveVoiceInteractionEndedNotification,
 } from '../acp/liveVoiceNotifications';
 import { LiveVoiceMediaSession } from './LiveVoiceMediaSession';
+import { acpReadConfig } from '../acp/config';
+import { XaiRealtimeSession } from './XaiRealtimeSession';
 
 export type LiveVoicePhase = 'idle' | 'connecting' | 'live' | 'stopping' | 'error';
 
@@ -28,6 +30,7 @@ interface LiveVoiceInteraction {
   interactionId?: string;
   remoteStartPending: boolean;
   media: LiveVoiceMediaSession;
+  xai?: XaiRealtimeSession;
   mediaReady: boolean;
   invalidated: boolean;
   acpConnectionLost: boolean;
@@ -60,6 +63,7 @@ export function useLiveVoice(): LiveVoiceController {
     if (interaction.invalidated) return;
     interaction.invalidated = true;
     interaction.media.teardown();
+    interaction.xai?.teardown();
     mutedRef.current = false;
   }, []);
 
@@ -166,7 +170,10 @@ export function useLiveVoice(): LiveVoiceController {
       const isCurrent = () => interactionRef.current === interaction && !interaction.invalidated;
 
       try {
-        const offerSdp = await interaction.media.createOffer();
+        const provider = await selectedLiveVoiceProvider();
+        if (!isCurrent()) return;
+        const offerSdp =
+          provider === 'xai' || provider === 'grok' ? '' : await interaction.media.createOffer();
         if (!isCurrent()) return;
 
         interaction.remoteStartPending = true;
@@ -183,6 +190,21 @@ export function useLiveVoice(): LiveVoiceController {
         }
         if (!isCurrent()) {
           finishCurrentInteraction(interaction, await stopRemoteInteraction(interaction));
+          return;
+        }
+
+        if (response.clientSecret && response.websocketUrl) {
+          interaction.media.teardown();
+          const xai = new XaiRealtimeSession(sessionId, () => {
+            void failCurrentInteraction(interaction);
+          });
+          interaction.xai = xai;
+          await xai.connect(response.websocketUrl, response.clientSecret);
+          if (!isCurrent()) return;
+          interaction.mediaReady = true;
+          xai.setMuted(mutedRef.current);
+          setPhase('live');
+          if (initialCommentary) xai.sendCommentary(initialCommentary);
           return;
         }
 
@@ -213,6 +235,7 @@ export function useLiveVoice(): LiveVoiceController {
 
     mutedRef.current = !mutedRef.current;
     interaction.media.setMuted(mutedRef.current);
+    interaction.xai?.setMuted(mutedRef.current);
     setMuted(mutedRef.current);
   }, []);
 
@@ -239,4 +262,13 @@ export function useLiveVoice(): LiveVoiceController {
 
   const activeSessionId = isLiveVoiceActive(phase) ? liveVoiceSessionId : null;
   return { activeSessionId, liveVoiceSessionId, phase, muted, start, stop, toggleMute };
+}
+
+async function selectedLiveVoiceProvider(): Promise<string> {
+  try {
+    const value = await acpReadConfig('GOOSE_LIVE_VOICE_PROVIDER', false);
+    return typeof value === 'string' ? value.trim().toLowerCase() : 'openai';
+  } catch {
+    return 'openai';
+  }
 }

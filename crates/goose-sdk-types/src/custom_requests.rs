@@ -287,6 +287,12 @@ pub struct LiveVoiceStartRequest {
 pub struct LiveVoiceStartResponse {
     pub interaction_id: String,
     pub answer_sdp: String,
+    /// Present when live voice is speaking through xAI Grok instead of OpenAI Live.
+    /// The desktop opens this WebSocket itself. The API key never leaves the server.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_secret: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub websocket_url: Option<String>,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize, JsonSchema, JsonRpcRequest)]

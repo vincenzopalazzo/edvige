@@ -112,7 +112,7 @@ const emitSpeechChunk = (worklet: MockAudioWorkletNode) => {
     worklet.emit(speech);
     now = 400;
     worklet.emit(silence);
-    now = 1301;
+    now = 1701;
     worklet.emit(silence);
   });
 };
@@ -268,7 +268,7 @@ describe('useAudioRecorder lifecycle', () => {
       result.current.stopRecording();
     });
 
-    await waitFor(() => expect(mocks.onTranscription).toHaveBeenCalledWith('final phrase'));
+    await waitFor(() => expect(mocks.onTranscription).toHaveBeenCalledWith('final phrase', 'stop'));
     await waitFor(() => expect(result.current.isTranscribing).toBe(false));
     expect(stream.track.stop).toHaveBeenCalledOnce();
     expect(audioContexts[0].close).toHaveBeenCalledOnce();
@@ -336,7 +336,7 @@ describe('useAudioRecorder lifecycle', () => {
     expect(result.current.isRecording).toBe(true);
 
     emitSpeechChunk(worklets[0]);
-    await waitFor(() => expect(mocks.onTranscription).toHaveBeenCalledWith('hello world'));
+    await waitFor(() => expect(mocks.onTranscription).toHaveBeenCalledWith('hello world', 'pause'));
     await waitFor(() => expect(result.current.isTranscribing).toBe(false));
 
     act(() => result.current.stopRecording());

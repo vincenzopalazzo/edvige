@@ -38,6 +38,7 @@ pub enum DictationProvider {
     OpenAI,
     ElevenLabs,
     Groq,
+    Xai,
     #[serde(rename = "model")]
     ModelNative,
     #[cfg(feature = "local-inference")]
@@ -75,6 +76,16 @@ pub const PROVIDERS: &[DictationProviderDef] = &[
         description: "Uses Groq's ultra-fast Whisper implementation with LPU acceleration.",
         uses_provider_config: false,
         settings_path: None,
+    },
+    DictationProviderDef {
+        provider: DictationProvider::Xai,
+        config_key: "XAI_API_KEY",
+        default_base_url: "https://api.x.ai",
+        endpoint_path: "v1/stt",
+        host_key: None,
+        description: "Uses xAI Grok speech-to-text. Reuses the xAI API key from Settings > Models.",
+        uses_provider_config: true,
+        settings_path: Some("Settings > Models"),
     },
     DictationProviderDef {
         provider: DictationProvider::ElevenLabs,
@@ -281,6 +292,7 @@ fn build_api_client(provider: DictationProvider) -> Result<(ApiClient, String)> 
     let auth = match provider {
         DictationProvider::OpenAI => AuthMethod::BearerToken(api_key),
         DictationProvider::Groq => AuthMethod::BearerToken(api_key),
+        DictationProvider::Xai => AuthMethod::BearerToken(api_key),
         DictationProvider::ElevenLabs => AuthMethod::ApiKey {
             header_name: "xi-api-key".to_string(),
             key: api_key,
@@ -397,6 +409,16 @@ async fn parse_model_transcription_response(response: reqwest::Response) -> Resu
     Ok(text)
 }
 
+fn xai_stt_language() -> Option<String> {
+    let raw = std::env::var("GOOSE_LOCALE").ok()?;
+    let primary = raw.split(['-', '_']).next()?.trim().to_ascii_lowercase();
+    if primary.len() == 2 || primary.len() == 3 {
+        Some(primary)
+    } else {
+        None
+    }
+}
+
 pub async fn transcribe_with_provider(
     provider: DictationProvider,
     model_param: String,
@@ -415,9 +437,19 @@ pub async fn transcribe_with_provider(
             anyhow::anyhow!(e)
         })?;
 
-    let form = reqwest::multipart::Form::new()
-        .part("file", part)
-        .text(model_param, model_value);
+    // xAI requires every other field before `file`.
+    let mut form = if provider == DictationProvider::Xai {
+        let mut form = reqwest::multipart::Form::new()
+            .text(model_param, model_value)
+            .text("format", "true");
+        if let Some(language) = xai_stt_language() {
+            form = form.text("language", language);
+        }
+        form
+    } else {
+        reqwest::multipart::Form::new().text(model_param, model_value)
+    };
+    form = form.part("file", part);
 
     let response = client
         .request(&endpoint_path)
@@ -725,6 +757,17 @@ mod tests {
             .await
             .unwrap();
         (server, response)
+    }
+
+    #[test]
+    fn xai_dictation_reuses_the_xai_api_key() {
+        let def = get_provider_def(DictationProvider::Xai);
+        assert_eq!(def.config_key, "XAI_API_KEY");
+        assert_eq!(def.default_base_url, "https://api.x.ai");
+        assert_eq!(def.endpoint_path, "v1/stt");
+        assert!(all_providers()
+            .iter()
+            .any(|def| def.provider == DictationProvider::Xai));
     }
 
     fn transcription_success_body(size: usize) -> String {

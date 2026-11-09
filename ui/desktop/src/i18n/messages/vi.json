@@ -1796,6 +1796,18 @@
   "liveVoiceSettings.description": {
     "defaultMessage": "Trò chuyện bằng giọng nói theo thời gian thực với Goose"
   },
+  "liveVoiceSettings.grok": {
+    "defaultMessage": "Grok"
+  },
+  "liveVoiceSettings.grokHint": {
+    "defaultMessage": "Grok dùng khóa API xAI và cần chế độ tự động."
+  },
+  "liveVoiceSettings.openai": {
+    "defaultMessage": "OpenAI"
+  },
+  "liveVoiceSettings.provider": {
+    "defaultMessage": "Nhà cung cấp giọng nói"
+  },
   "liveVoiceSettings.title": {
     "defaultMessage": "Giọng nói trực tiếp"
   },
@@ -3931,12 +3943,6 @@
   },
   "sessions.searchPlaceholder": {
     "defaultMessage": "Tìm kiếm lịch sử..."
-  },
-  "sessions.shareNostr.description": {
-    "defaultMessage": "Bất kỳ ai có liên kết này đều có thể tải về và giải mã phiên làm việc. Hãy coi nó như một bí mật."
-  },
-  "sessions.shareNostr.title": {
-    "defaultMessage": "Liên kết chia sẻ Nostr được mã hóa"
   },
   "sessions.toast.archiveFailed": {
     "defaultMessage": "Không thể lưu trữ phiên làm việc \"{name}\": {error}"
