@@ -437,13 +437,12 @@ pub async fn transcribe_with_provider(
             anyhow::anyhow!(e)
         })?;
 
-    // xAI requires every other field before `file`.
+    // xAI requires every other field before `file`. format=true is rejected
+    // unless language is also set.
     let mut form = if provider == DictationProvider::Xai {
-        let mut form = reqwest::multipart::Form::new()
-            .text(model_param, model_value)
-            .text("format", "true");
+        let mut form = reqwest::multipart::Form::new().text(model_param, model_value);
         if let Some(language) = xai_stt_language() {
-            form = form.text("language", language);
+            form = form.text("language", language).text("format", "true");
         }
         form
     } else {

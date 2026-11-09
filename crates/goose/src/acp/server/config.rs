@@ -388,7 +388,7 @@ fn prepare_voice_dictation_preferred_mic(
 fn is_supported_voice_dictation_provider(value: &str) -> bool {
     matches!(
         value,
-        "openai" | "groq" | "elevenlabs" | "model" | "__disabled__"
+        "openai" | "groq" | "xai" | "elevenlabs" | "model" | "__disabled__"
     ) || {
         #[cfg(feature = "local-inference")]
         {
@@ -398,5 +398,16 @@ fn is_supported_voice_dictation_provider(value: &str) -> bool {
         {
             false
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_supported_voice_dictation_provider;
+
+    #[test]
+    fn xai_is_a_supported_dictation_provider() {
+        assert!(is_supported_voice_dictation_provider("xai"));
+        assert!(!is_supported_voice_dictation_provider("grok"));
     }
 }

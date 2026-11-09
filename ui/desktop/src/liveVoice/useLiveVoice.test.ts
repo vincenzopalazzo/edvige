@@ -59,6 +59,29 @@ describe('useLiveVoice', () => {
     vi.mocked(acpStopLiveVoice).mockResolvedValue(undefined);
   });
 
+  it('unlocks playback audio before asking the server to start', async () => {
+    const resume = vi.fn(async () => undefined);
+    const close = vi.fn(async () => undefined);
+    class FakeAudioContext {
+      resume = resume;
+      close = close;
+    }
+    vi.stubGlobal('AudioContext', FakeAudioContext);
+    vi.mocked(acpStartLiveVoice).mockImplementation(async () => {
+      expect(resume).toHaveBeenCalledOnce();
+      return { interactionId: 'live-opaque', answerSdp: 'answer' };
+    });
+
+    try {
+      const { result } = renderHook(() => useLiveVoice());
+      await act(async () => result.current.start('main-session'));
+      expect(close).toHaveBeenCalled();
+      expect(result.current.phase).toBe('live');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('starts media from the start response and stops the same connection', async () => {
     const { result } = renderHook(() => useLiveVoice());
 

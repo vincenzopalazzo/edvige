@@ -169,6 +169,8 @@ export function useLiveVoice(): LiveVoiceController {
       interactionRef.current = interaction;
       const isCurrent = () => interactionRef.current === interaction && !interaction.invalidated;
 
+      const primedAudio = primePlaybackAudio();
+      let primedAudioOwned = false;
       try {
         const provider = await selectedLiveVoiceProvider();
         if (!isCurrent()) return;
@@ -195,9 +197,14 @@ export function useLiveVoice(): LiveVoiceController {
 
         if (response.clientSecret && response.websocketUrl) {
           interaction.media.teardown();
-          const xai = new XaiRealtimeSession(sessionId, () => {
-            void failCurrentInteraction(interaction);
-          });
+          const xai = new XaiRealtimeSession(
+            sessionId,
+            () => {
+              void failCurrentInteraction(interaction);
+            },
+            primedAudio
+          );
+          primedAudioOwned = true;
           interaction.xai = xai;
           await xai.connect(response.websocketUrl, response.clientSecret);
           if (!isCurrent()) return;
@@ -224,6 +231,8 @@ export function useLiveVoice(): LiveVoiceController {
           return;
         }
         await failCurrentInteraction(interaction);
+      } finally {
+        if (!primedAudioOwned) void primedAudio?.close();
       }
     },
     [failCurrentInteraction, finishCurrentInteraction]
@@ -262,6 +271,17 @@ export function useLiveVoice(): LiveVoiceController {
 
   const activeSessionId = isLiveVoiceActive(phase) ? liveVoiceSessionId : null;
   return { activeSessionId, liveVoiceSessionId, phase, muted, start, stop, toggleMute };
+}
+
+function primePlaybackAudio(): AudioContext | null {
+  if (typeof AudioContext === 'undefined') return null;
+  try {
+    const context = new AudioContext({ sampleRate: 24_000 });
+    void context.resume();
+    return context;
+  } catch {
+    return null;
+  }
 }
 
 async function selectedLiveVoiceProvider(): Promise<string> {

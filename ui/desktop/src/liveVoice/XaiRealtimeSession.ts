@@ -38,7 +38,8 @@ export class XaiRealtimeSession {
 
   constructor(
     private readonly sessionId: string,
-    private readonly onFailure: () => void
+    private readonly onFailure: () => void,
+    private readonly primedAudioContext: AudioContext | null = null
   ) {}
 
   async connect(websocketUrl: string, clientSecret: string): Promise<void> {
@@ -135,8 +136,11 @@ export class XaiRealtimeSession {
       return;
     }
     this.stream = stream;
-    const context = new AudioContext({ sampleRate: SAMPLE_RATE });
+    const context = this.primedAudioContext ?? new AudioContext({ sampleRate: SAMPLE_RATE });
     this.audioContext = context;
+    if (context.state === 'suspended') {
+      await context.resume();
+    }
     this.sampleRate = context.sampleRate || SAMPLE_RATE;
     this.playTime = context.currentTime;
     await context.audioWorklet.addModule(WORKLET_URL);
