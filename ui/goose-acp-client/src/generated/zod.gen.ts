@@ -1684,6 +1684,7 @@ export const zUnarchiveSessionRequest_unstable = z.object({
 export const zSourceType = z.enum([
     'skill',
     'builtinSkill',
+    'mcpSkill',
     'recipe',
     'subrecipe',
     'agent',

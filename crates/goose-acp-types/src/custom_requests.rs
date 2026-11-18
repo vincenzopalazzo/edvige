@@ -1446,6 +1446,7 @@ pub enum SourceType {
     #[default]
     Skill,
     BuiltinSkill,
+    McpSkill,
     Recipe,
     Subrecipe,
     Agent,
@@ -1457,6 +1458,7 @@ impl std::fmt::Display for SourceType {
         match self {
             SourceType::Skill => write!(f, "skill"),
             SourceType::BuiltinSkill => write!(f, "builtin skill"),
+            SourceType::McpSkill => write!(f, "MCP skill"),
             SourceType::Recipe => write!(f, "recipe"),
             SourceType::Subrecipe => write!(f, "subrecipe"),
             SourceType::Agent => write!(f, "agent"),
