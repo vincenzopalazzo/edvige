@@ -97,6 +97,7 @@ pub mod toolshim;
 pub mod usage_estimator;
 pub mod utils;
 
+pub mod vibe_acp;
 pub mod xai;
 pub mod xai_oauth;
 
