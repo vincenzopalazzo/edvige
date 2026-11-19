@@ -26,6 +26,7 @@ use super::{
     huggingface::HuggingFaceProvider,
     kimicode::KimiCodeProvider,
     litellm::LiteLLMProvider,
+    mistral_vibe::MistralVibeProvider,
     nanogpt::NanoGptProvider,
     pi_acp::PiAcpProvider,
     provider_registry::ProviderRegistry,
@@ -146,6 +147,10 @@ async fn init_registry() -> RwLock<ProviderRegistry> {
                         .get_secret::<serde_json::Value>("LITELLM_API_KEY")
                         .is_ok()
             })),
+        );
+        registry.register_with_inventory::<MistralVibeProvider>(
+            true,
+            Some(registrations::refresh_only()),
         );
         registry
             .register_with_inventory::<NanoGptProvider>(true, Some(registrations::refresh_only()));
@@ -558,6 +563,7 @@ mod tests {
             "gcp_vertex_ai",
             "github_copilot",
             "kimi_code",
+            "mistral_vibe",
             "muse_code",
             "nano-gpt",
             "tetrate",
