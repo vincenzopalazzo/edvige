@@ -3,7 +3,7 @@ use super::base::{ConfigKey, MessageStream, Provider, ProviderDef, ProviderMetad
 use super::catalog::{
     ProviderSetupCategory, ProviderSetupGroup, ProviderSetupMetadata, ProviderSetupMethod,
 };
-use super::openai_compatible::OpenAiCompatibleProvider;
+use super::openai_compatible::{handle_status, OpenAiCompatibleProvider};
 use crate::config::Config;
 use crate::conversation::message::Message;
 use anyhow::{anyhow, bail, Result};
@@ -24,9 +24,11 @@ use url::Url;
 pub(crate) const MISTRAL_VIBE_PROVIDER_NAME: &str = "mistral_vibe";
 pub(crate) const MISTRAL_VIBE_API_KEY: &str = "MISTRAL_VIBE_API_KEY";
 const MISTRAL_API_HOST: &str = "https://api.mistral.ai/v1";
-const MISTRAL_VIBE_DEFAULT_MODEL: &str = "devstral-2512";
-const MISTRAL_VIBE_KNOWN_MODELS: &[&str] =
-    &["devstral-2512", "mistral-medium-latest", "codestral-2508"];
+const MISTRAL_VIBE_DEFAULT_MODEL: &str = "mistral-vibe-cli-latest";
+const MISTRAL_VIBE_KNOWN_MODELS: &[&str] = &["mistral-vibe-cli-latest", "mistral-vibe-cli-fast"];
+// `/models` lists every model the key can reach, including OCR, embeddings,
+// audio and each alias; Vibe's curated catalog is the coding-agent subset.
+const MODEL_CATALOG_PATH: &str = "model-catalog?surface=vibe-code";
 const MISTRAL_VIBE_DOC_URL: &str = "https://docs.mistral.ai/vibe/code/cli/api-keys-profiles";
 
 // The browser sign-in Mistral Vibe uses: console.mistral.ai mints a workspace
@@ -177,6 +179,48 @@ fn open_sign_in_page(url: &str) {
     eprintln!("\nTo sign in to Mistral, open this URL in any browser:\n  {url}\n");
 }
 
+#[derive(Deserialize)]
+struct ModelCatalog {
+    #[serde(default)]
+    models: Vec<CatalogModel>,
+}
+
+#[derive(Deserialize)]
+struct CatalogModel {
+    id: String,
+    #[serde(default)]
+    recommended: bool,
+    #[serde(default)]
+    capabilities: CatalogCapabilities,
+    requires: Option<serde_json::Value>,
+    provider: Option<serde_json::Value>,
+}
+
+#[derive(Deserialize, Default)]
+struct CatalogCapabilities {
+    #[serde(default)]
+    completion_chat: bool,
+    #[serde(default)]
+    function_calling: bool,
+}
+
+/// Models goose can drive, recommended first. Like Vibe, it skips entries
+/// locked behind another plan (`requires`) or served by another provider.
+fn agent_models(catalog: ModelCatalog) -> Vec<String> {
+    let mut models: Vec<CatalogModel> = catalog
+        .models
+        .into_iter()
+        .filter(|model| {
+            model.capabilities.completion_chat
+                && model.capabilities.function_calling
+                && model.requires.is_none()
+                && model.provider.as_ref().is_none_or(|p| p == "mistral")
+        })
+        .collect();
+    models.sort_by_key(|model| !model.recommended);
+    models.into_iter().map(|model| model.id).collect()
+}
+
 struct StoredApiKey;
 
 #[async_trait]
@@ -195,6 +239,8 @@ impl AuthProvider for StoredApiKey {
 pub struct MistralVibeProvider {
     #[serde(skip)]
     inner: OpenAiCompatibleProvider,
+    #[serde(skip)]
+    catalog_client: ApiClient,
 }
 
 #[async_trait]
@@ -216,7 +262,21 @@ impl Provider for MistralVibeProvider {
     }
 
     async fn fetch_supported_models(&self) -> Result<Vec<String>, ProviderError> {
-        self.inner.fetch_supported_models().await
+        let response = self
+            .catalog_client
+            .response_get(MODEL_CATALOG_PATH)
+            .await
+            .map_err(|e| ProviderError::RequestFailed(e.to_string()))?;
+        let catalog: ModelCatalog = handle_status(response)
+            .await?
+            .json()
+            .await
+            .map_err(|e| ProviderError::RequestFailed(e.to_string()))?;
+        Ok(agent_models(catalog))
+    }
+
+    fn skip_canonical_filtering(&self) -> bool {
+        true
     }
 
     async fn configure_oauth(&self) -> Result<(), ProviderError> {
@@ -261,18 +321,24 @@ impl ProviderDef for MistralVibeProvider {
         tls_config: Option<crate::providers::api_client::TlsConfig>,
     ) -> BoxFuture<'static, Result<Self::Provider>> {
         Box::pin(async move {
-            let api_client = ApiClient::new_with_tls(
-                MISTRAL_API_HOST.to_string(),
-                AuthMethod::Custom(Box::new(StoredApiKey)),
-                tls_config,
-            )?
-            .with_request_builder(crate::session_context::session_id_request_builder());
+            let api_client = |tls_config| {
+                ApiClient::new_with_tls(
+                    MISTRAL_API_HOST.to_string(),
+                    AuthMethod::Custom(Box::new(StoredApiKey)),
+                    tls_config,
+                )
+                .map(|client| {
+                    client
+                        .with_request_builder(crate::session_context::session_id_request_builder())
+                })
+            };
             Ok(Self {
                 inner: OpenAiCompatibleProvider::new(
                     MISTRAL_VIBE_PROVIDER_NAME.to_string(),
-                    api_client,
+                    api_client(tls_config.clone())?,
                     String::new(),
                 ),
+                catalog_client: api_client(tls_config)?,
             })
         })
     }
@@ -396,6 +462,25 @@ mod tests {
         let error = sign_in_against(&server).run(|_| {}).await.unwrap_err();
 
         assert_eq!(error.to_string(), WORKSPACE_NOT_ELIGIBLE);
+    }
+
+    #[test]
+    fn catalog_keeps_agent_models_recommended_first() {
+        let catalog: ModelCatalog = serde_json::from_value(json!({"models": [
+            {"id": "fast", "label": "Fast",
+             "capabilities": {"completion_chat": true, "function_calling": true}},
+            {"id": "embed", "label": "Embed", "capabilities": {"completion_chat": false}},
+            {"id": "no-tools", "label": "No tools", "capabilities": {"completion_chat": true}},
+            {"id": "locked", "label": "Locked", "requires": {"plan": "team"},
+             "capabilities": {"completion_chat": true, "function_calling": true}},
+            {"id": "elsewhere", "label": "Elsewhere", "provider": "openrouter",
+             "capabilities": {"completion_chat": true, "function_calling": true}},
+            {"id": "latest", "label": "Latest", "recommended": true, "provider": "mistral",
+             "capabilities": {"completion_chat": true, "function_calling": true}}
+        ]}))
+        .unwrap();
+
+        assert_eq!(agent_models(catalog), ["latest", "fast"]);
     }
 
     #[tokio::test]
