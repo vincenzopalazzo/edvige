@@ -760,7 +760,7 @@ impl McpClientTrait for McpClient {
         let client = self.client.lock().await.clone();
         if client
             .peer_info()
-            .is_some_and(|info| info.protocol_version == ProtocolVersion::V_2026_07_28)
+            .is_some_and(|info| info.protocol_version >= ProtocolVersion::V_2026_07_28)
         {
             client.service().set_session_id(session_id).await;
             return tokio::select! {
@@ -826,7 +826,7 @@ impl McpClientTrait for McpClient {
             let client = self.client.lock().await;
             client.peer_info().map(|info| info.protocol_version.clone())
         };
-        if protocol_version.as_ref() == Some(&ProtocolVersion::V_2026_07_28) {
+        if protocol_version.is_some_and(|version| version >= ProtocolVersion::V_2026_07_28) {
             let extensions = inject_trace_context(
                 inject_session_context_into_extensions(
                     Extensions::new(),
@@ -917,7 +917,7 @@ impl McpClientTrait for McpClient {
         let client = self.client.lock().await.clone();
         if client
             .peer_info()
-            .is_some_and(|info| info.protocol_version == ProtocolVersion::V_2026_07_28)
+            .is_some_and(|info| info.protocol_version >= ProtocolVersion::V_2026_07_28)
         {
             client.service().set_session_id(session_id).await;
             return tokio::select! {
@@ -954,7 +954,7 @@ impl McpClientTrait for McpClient {
         let client = self.client.lock().await.clone();
         if client
             .peer_info()
-            .is_some_and(|info| info.protocol_version == ProtocolVersion::V_2026_07_28)
+            .is_some_and(|info| info.protocol_version >= ProtocolVersion::V_2026_07_28)
         {
             client.service().set_session_id(session_id).await;
             return tokio::select! {
@@ -999,7 +999,7 @@ impl McpClientTrait for McpClient {
         let client = self.client.lock().await.clone();
         if client
             .peer_info()
-            .is_some_and(|info| info.protocol_version == ProtocolVersion::V_2026_07_28)
+            .is_some_and(|info| info.protocol_version >= ProtocolVersion::V_2026_07_28)
         {
             client.service().set_session_id(session_id).await;
             return tokio::select! {
