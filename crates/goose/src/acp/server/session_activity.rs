@@ -3,7 +3,7 @@ use crate::session::{
     SessionActivity, SessionActivityDay, SessionActivityModel, SessionActivitySession,
 };
 
-impl GooseAcpAgent {
+impl AcpConnection {
     pub(super) async fn on_session_activity(
         &self,
         req: SessionActivityRequest,
@@ -15,6 +15,7 @@ impl GooseAcpAgent {
             }
         }
         let activity = self
+            .services
             .session_manager
             .get_activity(req.year)
             .await

@@ -15,14 +15,18 @@ use oi_kit_agent::operation::{
 };
 use tracing_futures::Instrument;
 
-use crate::agents::state_machine::ops_llm::{chat_span, record_chat_usage};
+use oi_kit_agent::compaction::CONVERSATION_CONTINUATION_TEXT;
+use oi_kit_agent::inference::{chat_span, record_chat_usage};
+use oi_kit_context_management::summarize;
+
 use crate::agents::state_machine::ops_toolcalling::pending_tool_requests;
 use crate::agents::state_machine::{
     applied, messages_since_kickoff, not_applicable, yielded, Emitter, GooseEffect, Operation,
     OperationResult,
 };
-use crate::context_mgmt::compact_messages;
-use crate::conversation::message::{Message, SystemNotificationType};
+use crate::context_mgmt::{compaction_templates, GooseCompactionModel};
+use crate::conversation::message::{Message, MessageMetadata, SystemNotificationType};
+use crate::conversation::Conversation;
 use crate::providers::base::Provider;
 use crate::session::Session;
 use oi_kit_providers::model::ModelConfig;
@@ -94,35 +98,29 @@ impl Operation<Session, GooseEffect> for OutputLimitRecoveryOperation {
             &session.id,
             "output_limit_recovery",
         );
-        match compact_messages(
-            self.provider.as_ref(),
-            &self.model_config,
-            &session.id,
-            conversation,
-            false,
-        )
-        .instrument(span.clone())
-        .await
+        let model =
+            GooseCompactionModel::new(Arc::clone(&self.provider), self.model_config.clone());
+        let templates = compaction_templates()?;
+        let summarizable: Vec<Message> = messages
+            .iter()
+            .filter(|message| !message.is_turn_context())
+            .cloned()
+            .collect();
+        match summarize(&model, None, &templates, &summarizable)
+            .instrument(span.clone())
+            .await
         {
-            Ok(result) => {
-                let mut compacted = result.conversation;
-                let usage = result.usage;
-                record_chat_usage(&span, &usage);
-                if let Some(last) = compacted.messages_mut().last_mut() {
-                    self.set_message_meta(
-                        last,
-                        OUTPUT_LIMIT_RECOVERY_ATTEMPTED_NOTE,
-                        serde_json::Value::Bool(true),
-                    );
-                }
+            Ok(summary) => {
+                record_chat_usage(&span, &summary.usage);
+                let compacted = recovered_conversation(messages, summary.message);
                 emit.message(Message::assistant().with_system_notification(
                     SystemNotificationType::InlineMessage,
                     "Compaction complete",
                 ));
-                applied([GooseEffect::CompactConversation {
-                    conversation: compacted,
-                    usage: Some(usage),
-                }])
+                applied([
+                    GooseEffect::RecordUsage(Box::new(summary.usage)),
+                    GooseEffect::CompactConversation(compacted),
+                ])
             }
             Err(e) => {
                 span.record("error.type", "compaction_error");
@@ -134,4 +132,32 @@ impl Operation<Session, GooseEffect> for OutputLimitRecoveryOperation {
             }
         }
     }
+}
+
+fn recovered_conversation(messages: &[Message], summary: Message) -> Conversation {
+    let mut compacted: Vec<Message> = messages
+        .iter()
+        .map(|message| {
+            message
+                .clone()
+                .with_metadata(message.metadata.clone().with_agent_invisible())
+        })
+        .collect();
+    let metadata = summary
+        .metadata
+        .clone()
+        .with_compaction_summary()
+        .with_agent_visible();
+    let mut summary = summary.with_metadata(metadata);
+    summary.metadata.set_operation_note(
+        OUTPUT_LIMIT_RECOVERY_OPERATION,
+        OUTPUT_LIMIT_RECOVERY_ATTEMPTED_NOTE,
+        serde_json::Value::Bool(true),
+    );
+    let continuation = Message::assistant()
+        .with_text(CONVERSATION_CONTINUATION_TEXT)
+        .with_metadata(MessageMetadata::agent_only());
+    compacted.push(summary);
+    compacted.push(continuation);
+    Conversation::new_unvalidated(compacted)
 }
