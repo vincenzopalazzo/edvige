@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use base64::Engine;
-use image::GenericImageView;
+use image::{DynamicImage, GenericImageView, ImageDecoder};
 use rmcp::model::{Annotations, CallToolResult, ContentBlock, TextContent};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -12,6 +12,20 @@ use serde_json::json;
 use super::edit::resolve_path;
 
 const MAX_IMAGE_BYTES: u64 = 20 * 1024 * 1024;
+
+/// Longest side, in pixels, of the image `read_image` hands to the model.
+/// Office scanners produce 1200-dpi pages (about 10k x 14k px): vision
+/// backends refuse to decode them, and every image stays in the conversation
+/// history. Override with `GOOSE_READ_IMAGE_MAX_SIDE`; 0 sends images as-is.
+const DEFAULT_MAX_SIDE: u32 = 2048;
+/// JPEG quality for re-encoded opaque images: text stays legible.
+const JPEG_QUALITY: u8 = 85;
+
+fn configured_max_side() -> u32 {
+    crate::config::Config::global()
+        .get_param::<u32>("GOOSE_READ_IMAGE_MAX_SIDE")
+        .unwrap_or(DEFAULT_MAX_SIDE)
+}
 
 fn visible_text(text: impl Into<String>) -> ContentBlock {
     ContentBlock::Text(
@@ -23,8 +37,9 @@ fn visible_text(text: impl Into<String>) -> ContentBlock {
 pub struct ImageReadParams {
     /// Local file path or http(s) URL of the image to load.
     pub source: String,
-    /// Optional crop rectangle in pixels. Coordinates are measured from the top-left corner.
-    /// use to zoom in and get more details.
+    /// Optional crop rectangle in pixels of the original image (see originalWidth and
+    /// originalHeight), measured from the top-left corner. Use it to zoom in and get more
+    /// details: the crop is taken at full resolution, then scaled to the size limit.
     #[serde(default)]
     pub crop: Option<CropParams>,
 }
@@ -53,7 +68,7 @@ impl ImageTool {
         params: ImageReadParams,
         working_dir: Option<&Path>,
     ) -> CallToolResult {
-        match load_image(&params, working_dir).await {
+        match load_image(&params, working_dir, configured_max_side()).await {
             Ok(loaded) => {
                 let mut result = CallToolResult::success(vec![
                     visible_text(loaded.summary(&params.source)),
@@ -68,6 +83,8 @@ impl ImageTool {
                     "originalWidth": loaded.original_width,
                     "originalHeight": loaded.original_height,
                     "crop": params.crop,
+                    "downscaled": loaded.downscaled,
+                    "maxSide": loaded.max_side,
                 }));
                 result
             }
@@ -92,21 +109,30 @@ struct LoadedImage {
     original_width: u32,
     original_height: u32,
     cropped: bool,
+    downscaled: bool,
+    max_side: u32,
 }
 
 impl LoadedImage {
     fn summary(&self, source: &str) -> String {
-        let crop_note = if self.cropped {
-            format!(
+        let note = match (self.cropped, self.downscaled) {
+            (false, false) => String::new(),
+            (true, false) => format!(
                 " Cropped from {}x{} to {}x{}.",
                 self.original_width, self.original_height, self.width, self.height
-            )
-        } else {
-            String::new()
+            ),
+            (false, true) => format!(
+                " Downscaled from {}x{} to {}x{} (longest side {} px).",
+                self.original_width, self.original_height, self.width, self.height, self.max_side
+            ),
+            (true, true) => format!(
+                " Cropped from {}x{}, then downscaled to {}x{} (longest side {} px).",
+                self.original_width, self.original_height, self.width, self.height, self.max_side
+            ),
         };
 
         format!(
-            "Loaded image from {source} ({} bytes, {}, {}x{}).{crop_note}",
+            "Loaded image from {source} ({} bytes, {}, {}x{}).{note}",
             self.bytes_len, self.mime_type, self.width, self.height
         )
     }
@@ -115,6 +141,7 @@ impl LoadedImage {
 async fn load_image(
     params: &ImageReadParams,
     working_dir: Option<&Path>,
+    max_side: u32,
 ) -> Result<LoadedImage, String> {
     if params.source.trim().is_empty() {
         return Err("source cannot be empty".to_string());
@@ -127,11 +154,22 @@ async fn load_image(
         "unsupported image format; supported formats are png, jpeg, gif, and webp".to_string()
     })?;
     let mime_type = mime_type(format)?;
-    let image = image::load_from_memory_with_format(&bytes, format)
-        .map_err(|error| format!("failed to decode image: {error}"))?;
-    let (original_width, original_height) = image.dimensions();
+    let (mut image, (original_width, original_height), decoded_smaller) =
+        decode(&bytes, format, max_side, params.crop.is_none())?;
 
-    let Some(crop) = &params.crop else {
+    let cropped = params.crop.is_some();
+    if let Some(crop) = &params.crop {
+        validate_crop(crop, original_width, original_height)?;
+        image = image.crop_imm(crop.x, crop.y, crop.width, crop.height);
+    }
+    let (width, height) = image.dimensions();
+    let too_big = max_side > 0 && width.max(height) > max_side;
+    if too_big {
+        image = shrink(&image, max_side);
+    }
+    let downscaled = too_big || decoded_smaller;
+
+    if !cropped && !downscaled {
         return Ok(LoadedImage {
             data: base64::prelude::BASE64_STANDARD.encode(&bytes),
             mime_type: mime_type.to_string(),
@@ -141,28 +179,104 @@ async fn load_image(
             original_width,
             original_height,
             cropped: false,
+            downscaled: false,
+            max_side,
         });
-    };
+    }
 
-    validate_crop(crop, original_width, original_height)?;
-    let cropped = image.crop_imm(crop.x, crop.y, crop.width, crop.height);
-    let mut cropped_bytes = Cursor::new(Vec::new());
-    cropped
-        .write_to(&mut cropped_bytes, image::ImageFormat::Png)
-        .map_err(|error| format!("failed to encode cropped image: {error}"))?;
-    let cropped_bytes = cropped_bytes.into_inner();
-    ensure_image_size(cropped_bytes.len() as u64)?;
-
+    let (encoded, encoded_mime) = encode(&image)?;
+    ensure_image_size(encoded.len() as u64)?;
+    let (width, height) = image.dimensions();
     Ok(LoadedImage {
-        data: base64::prelude::BASE64_STANDARD.encode(&cropped_bytes),
-        mime_type: "image/png".to_string(),
-        bytes_len: cropped_bytes.len(),
-        width: crop.width,
-        height: crop.height,
+        data: base64::prelude::BASE64_STANDARD.encode(&encoded),
+        mime_type: encoded_mime.to_string(),
+        bytes_len: encoded.len(),
+        width,
+        height,
         original_width,
         original_height,
-        cropped: true,
+        cropped,
+        downscaled,
+        max_side,
     })
+}
+
+/// Decode `bytes`; returns the image, the ORIGINAL dimensions, and whether the
+/// decoder already produced a smaller image. A large JPEG is decoded at 1/2,
+/// 1/4 or 1/8 of its size straight from the DCT (no full-size buffer, which
+/// for a 1200-dpi page is ~420 MB, close to the 512 MB decode limit). Not
+/// with a crop: its coordinates are in original pixels.
+fn decode(
+    bytes: &[u8],
+    format: image::ImageFormat,
+    max_side: u32,
+    may_decode_smaller: bool,
+) -> Result<(DynamicImage, (u32, u32), bool), String> {
+    let decode_error = |error: image::ImageError| format!("failed to decode image: {error}");
+    if format == image::ImageFormat::Jpeg && may_decode_smaller && max_side > 0 {
+        let mut decoder =
+            image::codecs::jpeg::JpegDecoder::new(Cursor::new(bytes)).map_err(decode_error)?;
+        let (width, height) = decoder.dimensions();
+        if width.max(height) > max_side {
+            let (target_width, target_height) = fit_within(width, height, max_side);
+            let clamp = |v: u32| u16::try_from(v).unwrap_or(u16::MAX);
+            let (scaled_width, _) = decoder
+                .scale(clamp(target_width), clamp(target_height))
+                .map_err(decode_error)?;
+            let smaller = u32::from(scaled_width) < width;
+            let image = DynamicImage::from_decoder(decoder).map_err(decode_error)?;
+            return Ok((image, (width, height), smaller));
+        }
+    }
+    let image = image::load_from_memory_with_format(bytes, format).map_err(decode_error)?;
+    let dimensions = image.dimensions();
+    Ok((image, dimensions, false))
+}
+
+/// `(width, height)` scaled so the longest side is `max_side`, aspect kept.
+fn fit_within(width: u32, height: u32, max_side: u32) -> (u32, u32) {
+    let longest = width.max(height);
+    if longest <= max_side {
+        return (width, height);
+    }
+    let scale = |v: u32| ((u64::from(v) * u64::from(max_side)) / u64::from(longest)).max(1) as u32;
+    (scale(width), scale(height))
+}
+
+/// Downscale so the longest side is `max_side`. Big reductions use the fast
+/// area-averaging thumbnail (good for text); small ones a triangle filter,
+/// where the thumbnail would alias.
+fn shrink(image: &DynamicImage, max_side: u32) -> DynamicImage {
+    let (width, height) = image.dimensions();
+    if width.max(height) >= max_side.saturating_mul(2) {
+        image.thumbnail(max_side, max_side)
+    } else {
+        image.resize(max_side, max_side, image::imageops::FilterType::Triangle)
+    }
+}
+
+/// Re-encode a cropped or downscaled image: JPEG for opaque images (a PNG of
+/// a scan is several times larger), PNG when there is transparency.
+fn encode(image: &DynamicImage) -> Result<(Vec<u8>, &'static str), String> {
+    let mut out = Cursor::new(Vec::new());
+    if image.color().has_alpha() {
+        image
+            .write_to(&mut out, image::ImageFormat::Png)
+            .map_err(|error| format!("failed to encode image: {error}"))?;
+        return Ok((out.into_inner(), "image/png"));
+    }
+    let opaque = match image {
+        DynamicImage::ImageLuma8(_) | DynamicImage::ImageRgb8(_) => image.clone(),
+        DynamicImage::ImageLuma16(_) => DynamicImage::ImageLuma8(image.to_luma8()),
+        _ => DynamicImage::ImageRgb8(image.to_rgb8()),
+    };
+    opaque
+        .write_with_encoder(image::codecs::jpeg::JpegEncoder::new_with_quality(
+            &mut out,
+            JPEG_QUALITY,
+        ))
+        .map_err(|error| format!("failed to encode image: {error}"))?;
+    Ok((out.into_inner(), "image/jpeg"))
 }
 
 async fn load_image_bytes(source: &str, working_dir: Option<&Path>) -> Result<Vec<u8>, String> {
@@ -347,9 +461,13 @@ mod local_file_tests {
         let file_url = url::Url::from_file_path(&path).unwrap().to_string();
 
         for source in [path.to_string_lossy().into_owned(), file_url] {
-            let loaded = load_image(&ImageReadParams { source, crop: None }, None)
-                .await
-                .unwrap();
+            let loaded = load_image(
+                &ImageReadParams { source, crop: None },
+                None,
+                DEFAULT_MAX_SIDE,
+            )
+            .await
+            .unwrap();
 
             assert_eq!(loaded.mime_type, "image/png");
             assert_eq!(loaded.bytes_len, png.len());
@@ -375,6 +493,7 @@ mod local_file_tests {
                 crop: None,
             },
             None,
+            DEFAULT_MAX_SIDE,
         )
         .await
         .unwrap_err();
@@ -383,6 +502,167 @@ mod local_file_tests {
             error,
             "unsupported image format; supported formats are png, jpeg, gif, and webp"
         );
+    }
+
+    fn encode_test_image(image: &DynamicImage, format: image::ImageFormat) -> Vec<u8> {
+        let mut out = Cursor::new(Vec::new());
+        image.write_to(&mut out, format).unwrap();
+        out.into_inner()
+    }
+
+    /// An opaque gradient: JPEG-encodable, non-trivial pixels.
+    fn rgb_image(width: u32, height: u32) -> DynamicImage {
+        DynamicImage::ImageRgb8(image::RgbImage::from_fn(width, height, |x, y| {
+            image::Rgb([(x % 251) as u8, (y % 241) as u8, ((x + y) % 239) as u8])
+        }))
+    }
+
+    async fn load_file(
+        bytes: &[u8],
+        name: &str,
+        crop: Option<CropParams>,
+        max_side: u32,
+    ) -> LoadedImage {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join(name);
+        std::fs::write(&path, bytes).unwrap();
+        load_image(
+            &ImageReadParams {
+                source: path.to_string_lossy().into_owned(),
+                crop,
+            },
+            None,
+            max_side,
+        )
+        .await
+        .unwrap()
+    }
+
+    fn decoded_dimensions(loaded: &LoadedImage) -> (u32, u32) {
+        let bytes = base64::prelude::BASE64_STANDARD
+            .decode(&loaded.data)
+            .unwrap();
+        image::load_from_memory(&bytes).unwrap().dimensions()
+    }
+
+    #[tokio::test]
+    async fn large_jpeg_is_downscaled_to_the_max_side() {
+        // like a scanned page, just smaller: the JPEG is decoded at 1/2 size
+        // by the DCT, then resized to fit 1024
+        let jpeg = encode_test_image(&rgb_image(4000, 3000), image::ImageFormat::Jpeg);
+        let loaded = load_file(&jpeg, "scan.jpg", None, 1024).await;
+
+        assert!(loaded.downscaled && !loaded.cropped);
+        assert_eq!((loaded.width, loaded.height), (1024, 768));
+        assert_eq!(
+            (loaded.original_width, loaded.original_height),
+            (4000, 3000)
+        );
+        assert_eq!(loaded.mime_type, "image/jpeg");
+        assert_eq!(decoded_dimensions(&loaded), (1024, 768));
+        assert!(loaded.bytes_len < jpeg.len());
+        assert!(loaded
+            .summary("scan.jpg")
+            .contains("Downscaled from 4000x3000 to 1024x768"));
+    }
+
+    #[tokio::test]
+    async fn portrait_page_keeps_its_aspect_ratio() {
+        let jpeg = encode_test_image(&rgb_image(1240, 1754), image::ImageFormat::Jpeg);
+        let loaded = load_file(&jpeg, "page.jpg", None, 1000).await;
+
+        assert_eq!(loaded.height, 1000);
+        // 1240 * 1000 / 1754 = 706.95; the resampler may round either way
+        assert!((706..=707).contains(&loaded.width), "{}", loaded.width);
+    }
+
+    #[tokio::test]
+    async fn transparent_png_stays_png_when_downscaled() {
+        let rgba = DynamicImage::ImageRgba8(image::RgbaImage::from_fn(3000, 1000, |x, _| {
+            image::Rgba([0, 0, 0, (x % 256) as u8])
+        }));
+        let png = encode_test_image(&rgba, image::ImageFormat::Png);
+        let loaded = load_file(&png, "overlay.png", None, 1000).await;
+
+        assert_eq!(loaded.mime_type, "image/png");
+        assert_eq!((loaded.width, loaded.height), (1000, 333));
+    }
+
+    #[tokio::test]
+    async fn small_image_and_disabled_limit_pass_through_untouched() {
+        let jpeg = encode_test_image(&rgb_image(800, 600), image::ImageFormat::Jpeg);
+        let small = load_file(&jpeg, "small.jpg", None, 2048).await;
+        assert!(!small.downscaled);
+        assert_eq!(
+            base64::prelude::BASE64_STANDARD
+                .decode(&small.data)
+                .unwrap(),
+            jpeg
+        );
+
+        let big = encode_test_image(&rgb_image(3000, 2000), image::ImageFormat::Jpeg);
+        let off = load_file(&big, "big.jpg", None, 0).await;
+        assert!(!off.downscaled);
+        assert_eq!((off.width, off.height), (3000, 2000));
+        assert_eq!(
+            base64::prelude::BASE64_STANDARD.decode(&off.data).unwrap(),
+            big
+        );
+    }
+
+    #[tokio::test]
+    async fn crop_uses_original_pixels_then_scales() {
+        let jpeg = encode_test_image(&rgb_image(4000, 3000), image::ImageFormat::Jpeg);
+        let crop = CropParams {
+            x: 1000,
+            y: 0,
+            width: 3000,
+            height: 3000,
+        };
+        let loaded = load_file(&jpeg, "scan.jpg", Some(crop), 1024).await;
+
+        assert!(loaded.cropped && loaded.downscaled);
+        assert_eq!((loaded.width, loaded.height), (1024, 1024));
+        assert_eq!(
+            (loaded.original_width, loaded.original_height),
+            (4000, 3000)
+        );
+        // an opaque crop is re-encoded as JPEG, not as a larger PNG
+        assert_eq!(loaded.mime_type, "image/jpeg");
+        assert!(loaded
+            .summary("scan.jpg")
+            .contains("Cropped from 4000x3000, then downscaled to 1024x1024"));
+    }
+
+    #[tokio::test]
+    async fn crop_outside_the_original_image_is_still_rejected() {
+        let jpeg = encode_test_image(&rgb_image(4000, 3000), image::ImageFormat::Jpeg);
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("scan.jpg");
+        std::fs::write(&path, &jpeg).unwrap();
+        let error = load_image(
+            &ImageReadParams {
+                source: path.to_string_lossy().into_owned(),
+                crop: Some(CropParams {
+                    x: 3500,
+                    y: 0,
+                    width: 1000,
+                    height: 100,
+                }),
+            },
+            None,
+            1024,
+        )
+        .await
+        .unwrap_err();
+        assert!(error.contains("exceeds image bounds 4000x3000"), "{error}");
+    }
+
+    #[test]
+    fn fit_within_keeps_aspect_and_never_reaches_zero() {
+        assert_eq!(fit_within(9924, 13960, 2048), (1455, 2048));
+        assert_eq!(fit_within(100, 50, 2048), (100, 50));
+        assert_eq!(fit_within(100_000, 1, 2048), (2048, 1));
     }
 }
 
@@ -522,7 +802,7 @@ mod tests {
             crop: None,
         };
 
-        let loaded = load_image(&params, None).await.unwrap();
+        let loaded = load_image(&params, None, DEFAULT_MAX_SIDE).await.unwrap();
         server.await.unwrap();
 
         assert_eq!(loaded.mime_type, "image/png");
