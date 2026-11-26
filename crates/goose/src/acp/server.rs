@@ -2207,6 +2207,7 @@ impl AcpConnection {
                         warn!(session_id, ?error, "Failed to send mid-turn usage update");
                     }
                 }
+                Ok(crate::agents::AgentEvent::ReplyOutcome(_)) => {}
                 Ok(crate::agents::AgentEvent::HistoryReplaced(_)) => {
                     output_limit.reset();
                     if let Err(error) = self

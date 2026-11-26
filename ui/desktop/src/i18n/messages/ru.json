@@ -3395,6 +3395,18 @@
   "scheduleDetailView.killRunningJob": {
     "defaultMessage": "Остановить выполняющуюся задачу"
   },
+  "scheduleDetailView.lastResult": {
+    "defaultMessage": "Последний результат:"
+  },
+  "scheduleDetailView.lastResultCancelled": {
+    "defaultMessage": "Отменено"
+  },
+  "scheduleDetailView.lastResultFailed": {
+    "defaultMessage": "Ошибка"
+  },
+  "scheduleDetailView.lastResultSucceeded": {
+    "defaultMessage": "Успешно"
+  },
   "scheduleDetailView.lastRun": {
     "defaultMessage": "Последний запуск:"
   },
@@ -3619,6 +3631,12 @@
   },
   "schedulesView.killError": {
     "defaultMessage": "Ошибка остановки задания"
+  },
+  "schedulesView.lastResultCancelled": {
+    "defaultMessage": "Последний запуск отменён"
+  },
+  "schedulesView.lastResultFailed": {
+    "defaultMessage": "Последний запуск завершился ошибкой"
   },
   "schedulesView.lastRun": {
     "defaultMessage": "Последний запуск: {date}"

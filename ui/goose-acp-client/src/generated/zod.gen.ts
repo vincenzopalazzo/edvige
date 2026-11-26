@@ -522,6 +522,7 @@ export const zContextReportResponse_unstable = z.object({
     autoCompactionPending: z.boolean()
 });
 
+/**
  * Calendar-year session activity for the desktop heatmap.
  */
 export const zSessionActivityRequest_unstable = z.object({
@@ -1531,11 +1532,18 @@ export const zRecipeToYamlResponse_unstable = z.object({
  */
 export const zListSchedulesRequest_unstable = z.record(z.string(), z.unknown());
 
+export const zScheduleRunStatusDto = z.enum([
+    'succeeded',
+    'failed',
+    'cancelled'
+]);
+
 export const zScheduledJobDto = z.object({
     id: z.string(),
     source: z.string(),
     cron: z.string(),
     lastRun: z.string().nullish(),
+    lastRunStatus: zScheduleRunStatusDto.nullish(),
     currentlyRunning: z.boolean(),
     paused: z.boolean(),
     currentSessionId: z.string().nullish(),

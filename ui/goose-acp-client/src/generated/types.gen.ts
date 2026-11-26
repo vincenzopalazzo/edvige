@@ -801,6 +801,7 @@ export type ContextPart = {
     contentPreview?: string | null;
 };
 
+/**
  * Calendar-year session activity for the desktop heatmap.
  */
 export type SessionActivityRequest_unstable = {
@@ -841,7 +842,6 @@ export type SessionActivityModel = {
 };
 
 /**
- * List all available Goose prompt templates.
  * List all available goose prompt templates.
  */
 export type ListPromptsRequest_unstable = {
@@ -1933,11 +1933,14 @@ export type ScheduledJobDto = {
     source: string;
     cron: string;
     lastRun?: string | null;
+    lastRunStatus?: ScheduleRunStatusDto | null;
     currentlyRunning: boolean;
     paused: boolean;
     currentSessionId?: string | null;
     jobStartTime?: string | null;
 };
+
+export type ScheduleRunStatusDto = 'succeeded' | 'failed' | 'cancelled';
 
 /**
  * List recent sessions created by a scheduled recipe job.

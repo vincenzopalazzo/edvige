@@ -1561,6 +1561,7 @@ impl CliSession {
                             output_limit.reset();
                             self.messages = updated_conversation;
                         }
+                        Some(Ok(AgentEvent::ReplyOutcome(_))) => {}
                         Some(Err(e)) => {
                             if interactive || !is_stream_json_mode {
                                 handle_agent_error(&e, is_stream_json_mode);

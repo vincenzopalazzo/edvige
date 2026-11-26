@@ -4840,6 +4840,16 @@
             "null"
           ]
         },
+        "lastRunStatus": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ScheduleRunStatusDto"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "currentlyRunning": {
           "type": "boolean"
         },
@@ -4865,6 +4875,14 @@
         "cron",
         "currentlyRunning",
         "paused"
+      ]
+    },
+    "ScheduleRunStatusDto": {
+      "type": "string",
+      "enum": [
+        "succeeded",
+        "failed",
+        "cancelled"
       ]
     },
     "ListScheduleSessionsRequest_unstable": {
