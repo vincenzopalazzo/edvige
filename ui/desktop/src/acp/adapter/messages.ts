@@ -40,6 +40,7 @@ export function applyContentChunk(
       const shouldSkipFallbackChunk = isOutputLimitFallbackChunk && existingMessageHasContent;
 
       draft.metadata.outputTokenLimitReached = gooseMeta.outputTokenLimitReached;
+      draft.metadata.outputTokenLimitKind = gooseMeta.outputTokenLimitKind;
       draft.metadata.fallbackContent = shouldSkipFallbackChunk
         ? undefined
         : gooseMeta.fallbackContent;
@@ -77,6 +78,7 @@ export function applyContentChunk(
         ...DEFAULT_VISIBLE_MESSAGE_METADATA,
         ...(gooseMeta.steer ? { steer: true } : {}),
         outputTokenLimitReached: gooseMeta.outputTokenLimitReached,
+        outputTokenLimitKind: gooseMeta.outputTokenLimitKind,
         fallbackContent: gooseMeta.fallbackContent,
         ...(gooseMeta.operationLogs ? { operationLogs: gooseMeta.operationLogs } : {}),
       },
@@ -114,6 +116,7 @@ export function applyThoughtChunk(
 
   rewriteMessage(state, message, (draft) => {
     draft.metadata.outputTokenLimitReached = gooseMeta.outputTokenLimitReached;
+    draft.metadata.outputTokenLimitKind = gooseMeta.outputTokenLimitKind;
     if (gooseMeta.operationLogs) {
       draft.metadata.operationLogs = gooseMeta.operationLogs;
     }
