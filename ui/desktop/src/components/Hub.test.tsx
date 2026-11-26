@@ -5,6 +5,7 @@ import { act, render, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router';
 import Hub from './Hub';
+import { peekHubSubmit } from '../utils/navigationUtils';
 import { IntlTestWrapper } from '../i18n/test-utils';
 import { createSession } from '../sessions';
 import { UserInput } from '../types/message';
@@ -112,10 +113,18 @@ describe('Hub', () => {
       expect(createSession).not.toHaveBeenCalled();
       expect(setView).toHaveBeenCalledWith(
         'pair',
-        expect.objectContaining({
-          workingDir: selectedDir ?? '/tmp/goose',
-          allExtensions: [],
-        })
+        selectedDir
+          ? {
+              disableAnimation: true,
+              fromHub: true,
+              initialMessage: { msg: DRAFT, images: [] },
+              workingDir: selectedDir,
+            }
+          : {
+              disableAnimation: true,
+              fromHub: true,
+              initialMessage: { msg: DRAFT, images: [] },
+            }
       );
     }
   );
@@ -168,10 +177,12 @@ describe('Hub', () => {
     await submit();
 
     expect(createSession).not.toHaveBeenCalled();
-    expect(setView).toHaveBeenCalledWith(
-      'pair',
-      expect.objectContaining({ extensionConfigs: [] })
-    );
+    expect(setView).toHaveBeenCalledWith('pair', {
+      disableAnimation: true,
+      fromHub: true,
+      initialMessage: { msg: DRAFT, images: [] },
+      extensionConfigs: [],
+    });
   });
 
   it('leaves the set unspecified when the picker was never touched', async () => {
@@ -181,7 +192,36 @@ describe('Hub', () => {
     await submit();
 
     expect(createSession).not.toHaveBeenCalled();
-    expect(setView).toHaveBeenCalledWith('pair', expect.objectContaining({ allExtensions: [] }));
+    expect(setView).toHaveBeenCalledWith('pair', {
+      disableAnimation: true,
+      fromHub: true,
+      initialMessage: { msg: DRAFT, images: [] },
+    });
+  });
+
+  it('keeps images and a picked directory for a failed submit to restore', async () => {
+    const setView = vi.fn();
+    const draftRef = { current: '' };
+    const image = { data: 'abc', mimeType: 'image/png' };
+    renderHub(draftRef, setView, '/projects/website');
+
+    await act(async () => captured.chatInput?.onWorkingDirChange('/projects/payments'));
+    await act(async () => {
+      captured.chatInput?.handleSubmit({ msg: '', images: [image] });
+    });
+
+    expect(peekHubSubmit(draftRef)).toEqual({
+      text: '',
+      images: [image],
+      workingDir: '/projects/payments',
+      extensionDraft: null,
+    });
+    expect(setView).toHaveBeenCalledWith('pair', {
+      disableAnimation: true,
+      fromHub: true,
+      initialMessage: { msg: '', images: [image] },
+      workingDir: '/projects/payments',
+    });
   });
 
   it('hands the draft to the input', () => {
@@ -191,13 +231,13 @@ describe('Hub', () => {
     expect(captured.chatInput?.draftRef).toBe(draftRef);
   });
 
-  it('clears the draft as soon as the chat is opened', async () => {
+  it('leaves the draft for Pair to clear after the chat starts', async () => {
     const draftRef = { current: DRAFT };
     renderHub(draftRef);
 
     await submit();
 
     expect(createSession).not.toHaveBeenCalled();
-    expect(draftRef.current).toBe('');
+    expect(draftRef.current).toBe(DRAFT);
   });
 });

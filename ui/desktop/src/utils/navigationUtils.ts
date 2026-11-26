@@ -3,6 +3,7 @@ import type { FixedExtensionEntry } from '../components/ConfigContext';
 import type { Recipe } from '../recipe';
 import type { ExtensionConfig } from '../types/extensions';
 import { UserInput } from '../types/message';
+import type { NextChatExtensionDraft } from './nextChatExtensions';
 
 export type View =
   | 'chat'
@@ -36,7 +37,33 @@ export type ViewOptions = {
   workingDir?: string;
   extensionConfigs?: ExtensionConfig[];
   allExtensions?: FixedExtensionEntry[];
+  /** Set when this /pair navigation came from a Hub submit, so Pair may clear that draft. */
+  fromHub?: boolean;
 };
+
+/** Options a failed Hub submit must put back, kept beside the string draft. */
+export type HubSubmitSnapshot = {
+  text: string;
+  images: UserInput['images'];
+  workingDir?: string;
+  extensionDraft?: NextChatExtensionDraft | null;
+};
+
+const hubSubmitSnapshots = new WeakMap<object, HubSubmitSnapshot>();
+
+export function rememberHubSubmit(draftRef: object, snapshot: HubSubmitSnapshot) {
+  hubSubmitSnapshots.set(draftRef, snapshot);
+}
+
+export function takeHubSubmit(draftRef: object): HubSubmitSnapshot | undefined {
+  const snapshot = hubSubmitSnapshots.get(draftRef);
+  if (snapshot) hubSubmitSnapshots.delete(draftRef);
+  return snapshot;
+}
+
+export function peekHubSubmit(draftRef: object): HubSubmitSnapshot | undefined {
+  return hubSubmitSnapshots.get(draftRef);
+}
 
 export const createNavigationHandler = (navigate: NavigateFunction) => {
   return (view: View, options?: ViewOptions) => {

@@ -16,6 +16,8 @@ import AnnouncementModal from './components/AnnouncementModal';
 import TelemetryConsentPrompt from './components/TelemetryConsentPrompt';
 import OnboardingGuard from './components/onboarding/OnboardingGuard';
 import { createSession, type CreateSessionOptions } from './sessions';
+import { getEffectiveWorkingDir } from './utils/workingDir';
+import { takeHubSubmit } from './utils/navigationUtils';
 import { acpListSessions, acpDeleteSession } from './acp/sessions';
 import { acpChatSessionStore } from './acp/chatSessionStore';
 
@@ -33,6 +35,7 @@ interface PairRouteState {
   workingDir?: string;
   extensionConfigs?: CreateSessionOptions['extensionConfigs'];
   allExtensions?: CreateSessionOptions['allExtensions'];
+  fromHub?: boolean;
 }
 import SessionsView from './components/sessions/SessionsView';
 import SchedulesView from './components/schedule/SchedulesView';
@@ -94,6 +97,7 @@ export function resolveSessionInitialMessage(
 
 export const PairRouteWrapper = ({
   activeSessions,
+  draftRef,
 }: {
   activeSessions: Array<{
     sessionId: string;
@@ -103,6 +107,7 @@ export const PairRouteWrapper = ({
   setActiveSessions: (
     sessions: Array<{ sessionId: string; initialMessage?: UserInput; noAutoSubmit?: boolean }>
   ) => void;
+  draftRef?: RefObject<string>;
 }) => {
   const { extensionsList } = useConfig();
   const location = useLocation();
@@ -110,14 +115,8 @@ export const PairRouteWrapper = ({
     (location.state as PairRouteState) || (window.history.state as PairRouteState) || {};
   const [searchParams, setSearchParams] = useSearchParams();
   const isCreatingSessionRef = useRef(false);
-  const unmountedRef = useRef(false);
+  const requestGenerationRef = useRef(0);
   const navigate = useNavigate();
-
-  useEffect(() => {
-    return () => {
-      unmountedRef.current = true;
-    };
-  }, []);
 
   const resumeSessionId = searchParams.get('resumeSessionId') ?? undefined;
   const recipeDeeplinkFromConfig = window.appConfig?.get('recipeDeeplink') as
@@ -125,31 +124,47 @@ export const PairRouteWrapper = ({
   const recipeIdFromConfig = window.appConfig?.get('recipeId') as string | null | undefined;
   const initialMessage = routeState.initialMessage;
   const noAutoSubmit = routeState.noAutoSubmit;
-  const workingDir = routeState.workingDir ?? getInitialWorkingDir();
+  const requestedWorkingDir = routeState.workingDir;
+  const fromHub = routeState.fromHub === true;
   const isPendingSession =
     !resumeSessionId && Boolean(initialMessage || recipeDeeplinkFromConfig || recipeIdFromConfig);
 
-  // Create session if we have an initialMessage, recipeDeeplink, or recipeId but no sessionId
+  // Create session if we have an initialMessage, recipeDeeplink, or recipeId but no sessionId.
+  // Each run has its own generation. Cleanup invalidates that run only, so a StrictMode
+  // remount or an extensionsList refresh cannot let the stale request publish too.
   useEffect(() => {
     if (!isPendingSession || isCreatingSessionRef.current) {
       return;
     }
 
+    const generation = ++requestGenerationRef.current;
     isCreatingSessionRef.current = true;
+    // Snapshot of the draft this Hub submit owns. A newer one typed after returning
+    // to Hub must survive both settle paths below. Launcher and recipe launches do
+    // not own the Hub draft, so they must not clear it.
+    const draftAtSubmit = fromHub ? draftRef?.current : undefined;
 
     (async () => {
+      const stale = () => requestGenerationRef.current !== generation;
       try {
-        const sessionOptions = routeState.extensionConfigs?.length
-          ? { extensionConfigs: routeState.extensionConfigs }
-          : { allExtensions: routeState.allExtensions ?? extensionsList };
+        const sessionWorkingDir = await getEffectiveWorkingDir(requestedWorkingDir);
+        if (stale()) return;
 
-        const newSession = await createSession(workingDir, {
+        const sessionOptions =
+          routeState.extensionConfigs !== undefined
+            ? { extensionConfigs: routeState.extensionConfigs }
+            : { allExtensions: routeState.allExtensions ?? extensionsList };
+
+        const newSession = await createSession(sessionWorkingDir, {
           recipeDeeplink: recipeDeeplinkFromConfig ?? undefined,
           recipeId: recipeIdFromConfig ?? undefined,
           ...sessionOptions,
         });
-        if (unmountedRef.current) {
-          return;
+        if (stale()) return;
+
+        if (fromHub && draftRef && draftRef.current === draftAtSubmit) {
+          draftRef.current = '';
+          takeHubSubmit(draftRef);
         }
         const sessionInitialMessage = resolveSessionInitialMessage(newSession, initialMessage);
 
@@ -174,9 +189,7 @@ export const PairRouteWrapper = ({
           { replace: true, state: location.state }
         );
       } catch (error) {
-        if (unmountedRef.current) {
-          return;
-        }
+        if (stale()) return;
         if (isRecipeDeclined(error) || isRecipeParamsCancelled(error)) {
           navigate('/');
           return;
@@ -195,9 +208,18 @@ export const PairRouteWrapper = ({
         toastError({ title: "Couldn't start chat", msg: formatAcpError(error) });
         navigate('/');
       } finally {
-        isCreatingSessionRef.current = false;
+        if (!stale()) {
+          isCreatingSessionRef.current = false;
+        }
       }
     })();
+
+    return () => {
+      if (requestGenerationRef.current === generation) {
+        requestGenerationRef.current += 1;
+      }
+      isCreatingSessionRef.current = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     isPendingSession,
@@ -207,7 +229,8 @@ export const PairRouteWrapper = ({
     resumeSessionId,
     setSearchParams,
     extensionsList,
-    workingDir,
+    requestedWorkingDir,
+    draftRef,
   ]);
 
   // Add resumed session to active sessions if not already there
@@ -698,6 +721,7 @@ export function AppInner() {
                   <PairRouteWrapper
                     activeSessions={activeSessions}
                     setActiveSessions={setActiveSessions}
+                    draftRef={hubDraftRef}
                   />
                 }
               />

@@ -341,10 +341,12 @@ describe('App Component - Brand New State', () => {
 
     expect(screen.getByTestId('pending-chat')).toBeInTheDocument();
     expect(screen.getByText('hello from hub')).toBeInTheDocument();
-    expect(createSession).toHaveBeenCalledWith('/tmp/hub-dir', {
-      recipeDeeplink: undefined,
-      recipeId: undefined,
-      allExtensions: [],
+    await waitFor(() => {
+      expect(createSession).toHaveBeenCalledWith('/tmp/hub-dir', {
+        recipeDeeplink: undefined,
+        recipeId: undefined,
+        allExtensions: [],
+      });
     });
     expect(mockSetSearchParams).not.toHaveBeenCalled();
 
