@@ -652,7 +652,7 @@ impl<S: MachineSession, E: InferenceEffect> Inference<S, E> for InferenceRunner<
                             && !emit.cancel_token().is_cancelled()
                             && !already_recovered
                             && is_recoverable_length_stop(
-                                output_tokens,
+                                output_tokens.and_then(|used| i32::try_from(used).ok()),
                                 self.model_config.max_output_tokens(),
                             );
                         if hide_for_recovery {
