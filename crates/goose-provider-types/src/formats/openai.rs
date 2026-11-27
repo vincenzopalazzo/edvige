@@ -5,7 +5,7 @@ use crate::documents::{
     convert_document, document_media_type_is_supported, unsupported_document_text, DocumentFormat,
     ASSISTANT_ROLE_REASON, UNSUPPORTED_MEDIA_TYPE_REASON,
 };
-use crate::errors::ProviderError;
+use crate::errors::{is_context_length_exceeded, ProviderError};
 use crate::images::{convert_image, detect_image_path, load_image_file, ImageFormat};
 use crate::json::{parse_tool_arguments, truncation_error_message};
 use crate::maybe_send::MaybeSend;
@@ -1199,7 +1199,18 @@ fn classify_choiceless_frame(value: &Value) -> Option<ProviderError> {
             Some(s) => format!("Gateway returned status {s} mid-stream"),
             None => "Unknown server error".to_string(),
         });
-    Some(ProviderError::ServerError(details))
+    Some(stream_error(value, details))
+}
+
+/// A stream that opened with HTTP 200 has no status left to classify by, so a context
+/// overflow reported in-stream is recognized from the frame itself. Left as a server
+/// error it is retried verbatim and then shown to the user instead of being compacted.
+fn stream_error(frame: &Value, message: String) -> ProviderError {
+    if is_context_length_exceeded(Some(frame), &message) {
+        ProviderError::ContextLengthExceeded(message)
+    } else {
+        ProviderError::ServerError(message)
+    }
 }
 
 /// Parse one SSE `data:` payload.
@@ -1227,7 +1238,7 @@ fn parse_streaming_chunk(line: &str) -> Result<Option<StreamingChunk>, ProviderE
             .get("message")
             .and_then(|m| m.as_str())
             .unwrap_or("Unknown server error");
-        return Err(ProviderError::ServerError(message.to_string()));
+        return Err(stream_error(&value, message.to_string()));
     }
 
     if value.get("object").and_then(|o| o.as_str()) == Some("error") {
@@ -1235,7 +1246,7 @@ fn parse_streaming_chunk(line: &str) -> Result<Option<StreamingChunk>, ProviderE
             .get("message")
             .and_then(|m| m.as_str())
             .unwrap_or("Unknown server error");
-        return Err(ProviderError::ServerError(message.to_string()));
+        return Err(stream_error(&value, message.to_string()));
     }
 
     if value
@@ -5306,6 +5317,37 @@ data: [DONE]"#;
         );
         assert_eq!(run_streaming_test(&response_lines).await?.text, "hello");
         Ok(())
+    }
+
+    #[test]
+    fn test_in_stream_context_overflow_is_context_length_exceeded() {
+        let overflow = "This server's maximum context length is 262144 tokens, but the \
+            rendered prompt has 232570 tokens and requests 32768 reply tokens, which exceeds \
+            the context window.";
+        for frame in [
+            json!({"error": {"message": overflow}}),
+            json!({"object": "error", "message": overflow, "code": 400}),
+            json!({"statusCode": 400, "message": overflow}),
+            json!({"error": {"code": "context_length_exceeded", "message": "rejected"}}),
+        ] {
+            match parse_streaming_chunk(&frame.to_string()) {
+                Err(ProviderError::ContextLengthExceeded(_)) => {}
+                other => panic!("expected ContextLengthExceeded for {frame}, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_in_stream_generic_error_stays_server_error() {
+        for frame in [
+            json!({"error": {"message": "upstream exploded"}}),
+            json!({"object": "error", "message": "upstream exploded"}),
+        ] {
+            match parse_streaming_chunk(&frame.to_string()) {
+                Err(ProviderError::ServerError(_)) => {}
+                other => panic!("expected ServerError for {frame}, got {other:?}"),
+            }
+        }
     }
 
     #[test]
