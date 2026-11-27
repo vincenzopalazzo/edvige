@@ -3524,8 +3524,8 @@ mod tests {
             false,
         )?;
         let obj = request.as_object().unwrap();
-        assert_eq!(obj.get("max_tokens"), Some(&json!(4096)));
-        assert!(obj.get("max_completion_tokens").is_none());
+        assert_eq!(obj.get("max_completion_tokens"), Some(&json!(4096)));
+        assert!(obj.get("max_tokens").is_none());
         Ok(())
     }
 
